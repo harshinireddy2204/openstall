@@ -77,6 +77,13 @@ def capture_from_order(order: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
 
+def is_paypal_checkout_url(url: str) -> bool:
+    """Only PayPal's buyer-facing checkout pages may be sent to a shopper, never API endpoints."""
+    from urllib.parse import urlparse
+    u = urlparse(url)
+    return u.scheme == "https" and u.hostname in ("www.paypal.com", "www.sandbox.paypal.com") and not u.path.startswith("/v")
+
+
 class PayPalClient:
     def __init__(self) -> None:
         self._token: str | None = None
@@ -209,8 +216,8 @@ class PayPalClient:
             (l["href"] for l in data.get("links", []) if l.get("rel") in ("payer-action", "approve")),
             None,
         )
-        if not approve:
-            raise PayPalError("PayPal did not return an approval link", details=data)
+        if not approve or not is_paypal_checkout_url(approve):
+            raise PayPalError("PayPal did not return a valid buyer approval link", details=data)
         return CreatedOrder(data["id"], approve, data.get("status", "CREATED"))
 
     def get_order(self, paypal_order_id: str) -> dict[str, Any]:

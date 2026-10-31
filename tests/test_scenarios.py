@@ -583,3 +583,74 @@ def test_stuck_capturing_order_is_reconciled():
         c.execute("UPDATE orders SET updated_at=? WHERE id=?", (old, o["order_id"]))
     assert service.reconcile_stuck_captures() == 1
     assert service.get_order(o["order_id"])["status"] == "paid"
+
+
+def test_claude_forced_tool_choice_fallback(monkeypatch):
+    """Some models reject forced tool_choice: we retry with auto and still get a catalog."""
+    import types
+    import anthropic
+    from app import ai
+
+    calls = []
+
+    class FakeMessages:
+        def create(self, **kw):
+            calls.append(kw.get("tool_choice", {"type": "default"})["type"])
+            if "tool_choice" in kw:
+                resp = types.SimpleNamespace(status_code=400, headers={}, request=None)
+                raise anthropic.BadRequestError("tool_choice: type \"tool\" and \"any\" are not supported for this model.",
+                                                response=_fake_response(), body=None)
+            block = types.SimpleNamespace(type="tool_use", input={"items": [{"name": "Aloo samosa", "price": 3, "unit": "each"}],
+                                                                  "questions_for_seller": []})
+            return types.SimpleNamespace(content=[block])
+
+    monkeypatch.setattr(anthropic, "Anthropic", lambda api_key: types.SimpleNamespace(messages=FakeMessages()))
+    monkeypatch.setattr(ai.settings.__class__, "ai_live", property(lambda self: True))
+    out = ai.extract_catalog(text="Aloo samosa $3")
+    assert calls == ["tool", "default"] and out["source"] == "claude" and out["items"][0]["name"] == "Aloo samosa"
+
+
+def test_claude_text_json_answer_is_accepted(monkeypatch):
+    import types
+    import anthropic
+    from app import ai
+
+    class FakeMessages:
+        def create(self, **kw):
+            return types.SimpleNamespace(content=[types.SimpleNamespace(
+                type="text", text='Here you go: {"items": [{"name": "Chai", "price": 4, "unit": "cup"}], "questions_for_seller": []}')])
+
+    monkeypatch.setattr(anthropic, "Anthropic", lambda api_key: types.SimpleNamespace(messages=FakeMessages()))
+    monkeypatch.setattr(ai.settings.__class__, "ai_live", property(lambda self: True))
+    assert ai.extract_catalog(text="Chai $4")["items"][0]["price"] == 4.0
+
+
+def _fake_response():
+    import httpx
+    return httpx.Response(400, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+
+
+def test_agent_reply_never_contains_invented_links():
+    from app.buyer_agent import scrub_urls
+    out = scrub_urls("Done! Capture at https://api-m.sandbox.paypal.com/v2/checkout/orders/4C9/capture or www.evil.example")
+    assert "http" not in out and "www." not in out and "PayPal button" in out
+
+
+def test_only_paypal_checkout_pages_are_valid_approval_links():
+    from app.paypal import is_paypal_checkout_url
+    assert is_paypal_checkout_url("https://www.sandbox.paypal.com/checkoutnow?token=ABC")
+    assert is_paypal_checkout_url("https://www.paypal.com/checkoutnow?token=ABC")
+    assert not is_paypal_checkout_url("https://api-m.sandbox.paypal.com/v2/checkout/orders/ABC/capture")
+    assert not is_paypal_checkout_url("https://www.sandbox.paypal.com/v2/checkout/orders/ABC/capture")
+    assert not is_paypal_checkout_url("http://www.paypal.com/checkoutnow")
+    assert not is_paypal_checkout_url("https://paypal.com.evil.example/checkoutnow")
+
+
+def test_confirm_endpoint_only_captures_after_approval(client):
+    o = _new_order()
+    r = client.post(f"/api/orders/{o['order_id']}/confirm")
+    assert r.json()["status"] == "pending_payment"  # not approved yet: no capture attempted
+    assert not db.query_one("SELECT 1 FROM events WHERE kind='capture_failed'")
+    _approve(o)
+    assert client.post(f"/api/orders/{o['order_id']}/confirm").json()["status"] == "paid"
+    assert client.post(f"/api/orders/{o['order_id']}/confirm").json()["status"] == "paid"  # idempotent

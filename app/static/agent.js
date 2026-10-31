@@ -3,17 +3,20 @@ const form = document.getElementById("chat-form"), input = document.getElementBy
 let sessionId = null;
 const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function add(role, text, approvalUrl) {
+function add(role, text) {
   const div = document.createElement("div");
   div.className = "msg " + role;
   div.textContent = text;
-  if (approvalUrl) {
-    const a = document.createElement("a");
-    a.href = approvalUrl; a.className = "btn primary"; a.textContent = "Approve payment in PayPal";
-    div.appendChild(document.createElement("br")); div.appendChild(a);
-  }
   msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
   return div;
+}
+
+async function addOrderCard(orderId) {
+  const res = await fetch(`/api/orders/${orderId}`);
+  if (!res.ok) return;
+  const el = OpenStallCheckout.card(await res.json());
+  el.classList.add("msg", "bot");
+  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
 }
 
 form.addEventListener("submit", async (e) => {
@@ -33,7 +36,8 @@ form.addEventListener("submit", async (e) => {
       li.innerHTML = `<span class="fn">${esc(s.tool)}</span><br><span class="${s.ok ? "" : "blocked"}">${esc(s.summary)}</span>`;
       trace.appendChild(li);
     }
-    add("bot", d.reply || "(no reply)", d.paypal_approval_url);
+    add("bot", d.reply || "(no reply)");
+    if (d.order_id) await addOrderCard(d.order_id);
   } catch (err) { thinking.textContent = "Network error, please retry."; }
   finally { form.querySelector("button").disabled = false; input.focus(); }
 });

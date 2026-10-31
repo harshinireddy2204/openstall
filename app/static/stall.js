@@ -28,6 +28,11 @@ form.addEventListener("submit", async (e) => {
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.message || "Could not place the order");
-    window.location = d.paypal_approval_url;
+    const box = document.getElementById("order-result");
+    box.innerHTML = ""; box.classList.remove("hidden");
+    const el = OpenStallCheckout.card(d);
+    box.appendChild(el);
+    OpenStallCheckout.pay(d.paypal_approval_url, d.order_id, el);
+    btn.disabled = false;
   } catch (err) { status.textContent = err.message; btn.disabled = false; }
 });

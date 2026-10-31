@@ -66,8 +66,9 @@ def place_order(
     """Create an order and a PayPal checkout for it.
 
     items: [{"item_id": 3, "quantity": 12}]. Prices are always taken from the menu.
-    Returns paypal_approval_url. The HUMAN buyer must open it and approve the payment in PayPal;
-    never claim the order is paid until get_order_status says "paid".
+    Returns paypal_approval_url. Give the HUMAN buyer exactly that URL to approve the payment in PayPal.
+    Never construct or modify PayPal URLs yourself, and never claim the order is paid until
+    get_order_status says "paid".
     """
     return service.place_order(
         stall_id, items, pickup_date, buyer_name=buyer_name, note=note, pickup_window=pickup_window, channel="agent"

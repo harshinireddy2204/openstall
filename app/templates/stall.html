@@ -33,6 +33,7 @@
   <button class="btn primary" type="submit">Order and pay with PayPal</button>
   <p id="order-status" class="error"></p>
 </form>
+<section id="order-result" class="hidden"></section>
 
 <section class="card agent-box">
   <h2>For AI agents</h2>
@@ -40,4 +41,4 @@
   <pre><code>{{ settings.mcp_url }}</code></pre>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/stall.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/checkout.js"></script><script src="/static/stall.js"></script>{% endblock %}

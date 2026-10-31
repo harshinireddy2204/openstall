@@ -520,6 +520,22 @@ def _finalize_capture(o: dict[str, Any], cap: dict[str, Any]) -> dict[str, Any]:
     return order_view(order_id)
 
 
+def confirm_if_approved(order_id: str) -> dict[str, Any]:
+    """Safe to poll from the browser: captures only once PayPal reports the buyer approved."""
+    o = get_order(order_id)
+    if not o:
+        raise RuleViolation("unknown_order", f"No order {order_id!r}.")
+    if o["status"] not in ("pending_payment", "expired", "payment_failed") or not o["paypal_order_id"]:
+        return order_view(order_id)
+    try:
+        pp_status = paypal.get_order(o["paypal_order_id"]).get("status")
+    except PayPalError:
+        return order_view(order_id)
+    if pp_status in ("APPROVED", "COMPLETED"):
+        return complete_payment(order_id)
+    return order_view(order_id)
+
+
 def cancel_order(order_id: str) -> dict[str, Any]:
     o = get_order(order_id)
     if o and o["status"] == "pending_payment":

@@ -79,3 +79,14 @@ th { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: 
   .topbar nav a { margin: 0 12px 0 0; }
   table { display: block; overflow-x: auto; }
 }
+
+.order-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 12px 0; max-width: 420px; white-space: normal; }
+.order-card ul { margin: 6px 0; padding-left: 18px; }
+.order-card-head, .order-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.order-card .btn { margin-top: 10px; }
+.badge { font-size: .78rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+.badge.ok { background: #dcfce7; color: var(--ok); }
+.badge.wait { background: #fff4d6; color: #8a5a00; }
+.badge.warn { background: #fee2e2; color: var(--bad); }
+.small-link { display: inline-block; margin-top: 8px; font-size: .82rem; }
+#order-result .order-card { max-width: none; }

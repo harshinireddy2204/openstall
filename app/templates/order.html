@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Order {{ order.order_id }} · OpenStall{% endblock %}
+{% block scripts %}
+<script>
+  if (window.opener && !window.opener.closed) {
+    try { window.opener.postMessage({ type: "openstall-order", order_id: {{ order.order_id|tojson }} }, location.origin); } catch (e) {}
+    document.body.insertAdjacentHTML("afterbegin", '<div class="banner">Payment step finished. You can close this window.</div>');
+    setTimeout(() => window.close(), 800);
+  }
+</script>
+{% endblock %}
 {% block content %}
 <section class="narrow">
   <p class="eyebrow">Order {{ order.order_id }}</p>

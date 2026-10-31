@@ -5,6 +5,7 @@ It never touches real money (sandbox only) and never prints secrets.
 """
 
 import sys
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -31,18 +32,29 @@ if "sandbox" not in settings.paypal_api_base:
 
 step("OAuth token", lambda: "ok" if paypal._access_token() else "no token")
 order = step("Create order ($1.00)", lambda: paypal.create_order(
-    reference_id="SMOKE-TEST", lines=[{"name": "Smoke test bun", "quantity": 1, "unit_cents": 100}], total_cents=100,
+    reference_id=f"SMOKE-{uuid.uuid4().hex[:10].upper()}", lines=[{"name": "Smoke test bun", "quantity": 1, "unit_cents": 100}], total_cents=100,
     description="OpenStall sandbox smoke test", payee_email=None, brand_name="OpenStall",
     return_url=f"{settings.base_url}/healthz", cancel_url=f"{settings.base_url}/healthz"))
 if order:
-    print(f"       Open this link, log in with a SANDBOX PERSONAL account, approve:\n       {order.approve_url}")
-    input("       Press Enter after approving...")
-    cap = step("Capture", lambda: paypal.capture_order(order.id))
+    print(f"       1. Open this link in a private/incognito window:\n          {order.approve_url}")
+    print("       2. Log in with your SANDBOX PERSONAL (buyer) account, not your real PayPal and not the sandbox Business one.")
+    print("       3. Click the final Pay / Complete Purchase button.")
+    print("       4. You'll be sent to a page that may not load (localhost isn't running). That's expected: approval is done.")
+    status = ""
+    for attempt in range(5):
+        input("       Press Enter once you've clicked Pay...")
+        status = paypal.get_order(order.id).get("status", "")
+        if status == "APPROVED":
+            print("[PASS] Buyer approval: APPROVED")
+            break
+        print(f"       PayPal still shows status {status!r}, not APPROVED. Finish the Pay step in the browser, then press Enter again.")
+    cap = step("Capture", lambda: paypal.capture_order(order.id)) if status == "APPROVED" else None
     if cap:
         step("Refund", lambda: paypal.refund_capture(cap["capture_id"], note="Smoke test refund"))
 
 if settings.ai_live:
-    from app.ai import extract_catalog
+    from app.ai import EXTRACTOR_VERSION, extract_catalog
+    print(f"       (menu reader version {EXTRACTOR_VERSION}, model {settings.anthropic_model})")
     img = (Path(__file__).resolve().parent.parent / "app/static/samples/chalkboard_menu.png").read_bytes()
     step("Claude reads sample chalkboard", lambda: [
         (i["name"], i["price"]) for i in extract_catalog(image=img, media_type="image/png")["items"]])

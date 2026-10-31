@@ -304,6 +304,12 @@ def api_order(order_id: str):
     return service.order_view(order_id)
 
 
+@app.post("/api/orders/{order_id}/confirm")
+def api_confirm_order(order_id: str):
+    """Called by the page after the PayPal popup closes (or while polling)."""
+    return service.confirm_if_approved(order_id)
+
+
 class ChatIn(BaseModel):
     message: str = Field(max_length=2000)
     session_id: str | None = None

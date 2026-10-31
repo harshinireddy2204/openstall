@@ -14,6 +14,7 @@ from typing import Any
 from .config import settings
 
 log = logging.getLogger("openstall.ai")
+EXTRACTOR_VERSION = "2"  # bump when the extraction call changes (shown by the smoke test)
 
 CATALOG_TOOL = {
     "name": "save_catalog",
@@ -67,7 +68,7 @@ SYSTEM = (
     "You turn small sellers' menus (chalkboards, flyers, Instagram posts, notes) into a clean catalog "
     "that AI shopping agents can read. Be faithful: never invent items or prices. If a price is unreadable, "
     "set it to 0 and add a question for the seller. Normalize units (e.g. 'per dozen' -> unit 'dozen'). "
-    "Always call the save_catalog tool."
+    "Always call the save_catalog tool. If you cannot call tools, reply with only a JSON object matching its schema."
 )
 
 SUPPORTED_MEDIA = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -102,16 +103,23 @@ def extract_catalog(*, text: str = "", image: bytes | None = None, media_type: s
             "source": {"type": "base64", "media_type": media_type, "data": base64.b64encode(image).decode()},
         })
     content.append({"type": "text", "text": ("Seller notes:\n" + text) if text.strip() else "Extract this menu."})
+    request = dict(
+        model=settings.anthropic_model,
+        max_tokens=2000,
+        system=SYSTEM,
+        tools=[CATALOG_TOOL],
+        messages=[{"role": "user", "content": content}],
+    )
     try:
-        msg = client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=2000,
-            system=SYSTEM,
-            tools=[CATALOG_TOOL],
-            tool_choice={"type": "tool", "name": "save_catalog"},
-            messages=[{"role": "user", "content": content}],
-        )
-    except Exception as e:  # network, auth, rate limit
+        try:
+            msg = client.messages.create(**request, tool_choice={"type": "tool", "name": "save_catalog"})
+        except Exception as e:
+            # Some models reject forced tool choice; retry without it (default = auto) plus an explicit instruction.
+            if "tool_choice" not in str(e):
+                raise
+            log.info("Model rejected forced tool_choice, retrying without it")
+            msg = client.messages.create(**request)
+    except Exception as e:  # network, auth, billing, rate limit
         log.warning("Claude extraction failed: %s", e)
         if text.strip():
             fallback = parse_menu_text(text)
@@ -120,9 +128,26 @@ def extract_catalog(*, text: str = "", image: bytes | None = None, media_type: s
         raise ValueError("The AI menu reader is unavailable right now. Please type your menu instead.") from e
 
     block = next((b for b in msg.content if getattr(b, "type", "") == "tool_use"), None)
-    if block is None:
-        raise ValueError("Could not read a catalog from that input.")
-    return {**sanitize_catalog(dict(block.input)), "source": "claude"}
+    if block is not None:
+        return {**sanitize_catalog(dict(block.input)), "source": "claude"}
+    # Model answered in text instead of calling the tool: accept a JSON object if it gave one.
+    raw = "".join(getattr(b, "text", "") for b in msg.content)
+    parsed = _json_from_text(raw)
+    if parsed is None:
+        raise ValueError("Could not read a catalog from that input. Try a clearer photo or type the menu.")
+    return {**sanitize_catalog(parsed), "source": "claude"}
+
+
+def _json_from_text(raw: str) -> dict[str, Any] | None:
+    import json
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(raw[start:end + 1])
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get("items"), list) else None
 
 
 def sanitize_catalog(cat: dict[str, Any]) -> dict[str, Any]:
