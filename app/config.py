@@ -23,7 +23,9 @@ def _env(name: str, default: str = "") -> str:
 @dataclass(frozen=True)
 class Settings:
     # Public base URL of this deployment, used for PayPal return URLs and MCP docs.
-    base_url: str = field(default_factory=lambda: _env("BASE_URL", "http://localhost:8000").rstrip("/"))
+    # BASE_URL wins; on Render, RENDER_EXTERNAL_URL is set automatically (e.g. https://openstall.onrender.com).
+    base_url: str = field(default_factory=lambda: (
+        _env("BASE_URL") or _env("RENDER_EXTERNAL_URL") or "http://localhost:8000").rstrip("/"))
 
     # PayPal (sandbox only for the hackathon)
     paypal_client_id: str = field(default_factory=lambda: _env("PAYPAL_CLIENT_ID"))

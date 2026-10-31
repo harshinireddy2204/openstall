@@ -9,8 +9,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.1
-      - key: BASE_URL
-        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET

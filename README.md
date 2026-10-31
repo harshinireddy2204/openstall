@@ -2,6 +2,8 @@
 
 **Agent-ready shops for sellers without a website.** Snap a photo of your menu and AI shopping agents can find you, order, and pay with PayPal.
 
+**Live demo: https://openstall.onrender.com** (free hosting: the first load may take up to a minute)
+
 Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/). PayPal sandbox only; no real money moves.
 
 ## The problem
@@ -44,7 +46,7 @@ The model proposes, deterministic code decides, PayPal settles.
 - **Abuse limits.** Per-IP rate limits, a cap on unpaid holds per stall per day, holds that expire, order total caps.
 - **Prompt-injection aware.** Seller-written text is marked as untrusted data in both the MCP instructions and the buyer agent prompt, and the server enforces every rule regardless of what an agent says.
 
-`tests/test_scenarios.py` covers 70+ scenarios: overselling, concurrent orders, lead time, price tampering, timeouts, declines, pending captures, refunds failing, webhook replays, partial refunds, disputes, XSS, rate limits and more.
+`tests/test_scenarios.py` covers 76 scenarios: overselling, concurrent orders, lead time, price tampering, timeouts, declines, pending captures, refunds failing, webhook replays, partial refunds, disputes, XSS, rate limits and more.
 
 ## Run locally
 
