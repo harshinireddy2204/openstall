@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · {{ stall.name }}{% endblock %}
+{% block content %}
+<section>
+  <p class="eyebrow">Seller dashboard · keep this link private</p>
+  <h1>{{ stall.name }}</h1>
+  <p><a href="/s/{{ stall.id }}">Public stall page</a> · Listed for agents at <code>{{ settings.mcp_url }}</code></p>
+</section>
+
+<section class="card">
+  <h2>Orders</h2>
+  {% if not orders %}<p class="muted">No orders yet. Share your stall or ask an AI agent to find you.</p>{% endif %}
+  <table class="orders" data-stall="{{ stall.id }}" data-key="{{ key }}">
+    <thead><tr><th>Pickup</th><th>Order</th><th>Items</th><th>Total</th><th>Via</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr class="status-{{ o.status }}">
+        <td>{{ o.pickup_date }}<br><span class="muted">{{ o.pickup_window }}</span></td>
+        <td><a href="/order/{{ o.order_id }}">{{ o.order_id }}</a></td>
+        <td>{% for l in o.lines %}{{ l.quantity }} × {{ l.name }}<br>{% endfor %}</td>
+        <td>{{ o.total }}</td>
+        <td><span class="pill">{{ "AI agent" if o.channel == "agent" else o.channel }}</span></td>
+        <td>{{ o.status_label }}</td>
+        <td class="actions">
+          {% if o.status == "needs_attention" %}<button class="btn small danger" data-action="refund" data-order="{{ o.order_id }}">Retry refund</button>{% endif %}
+          {% if o.status == "paid" %}<button class="btn small" data-action="ready" data-order="{{ o.order_id }}">Mark ready</button>{% endif %}
+          {% if o.status in ["paid", "ready"] %}
+            <button class="btn small" data-action="picked_up" data-order="{{ o.order_id }}">Picked up</button>
+            {% if stall.ships %}<button class="btn small" data-action="ship" data-order="{{ o.order_id }}">Add tracking</button>{% endif %}
+            <button class="btn small danger" data-action="refund" data-order="{{ o.order_id }}">Refund</button>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if invoices %}
+<section class="card">
+  <h2>Custom order requests</h2>
+  <p class="muted">Agents can only ask. You set the price; OpenStall sends a PayPal invoice with your deposit.</p>
+  <table class="custom" data-stall="{{ stall.id }}" data-key="{{ key }}">
+    <thead><tr><th>Ref</th><th>Buyer</th><th>Request</th><th>Needed by</th><th>Status</th><th>Quote</th></tr></thead>
+    <tbody>{% for i in invoices %}
+      <tr>
+        <td>{{ i.id }}</td><td>{{ i.buyer_email }}</td><td>{{ i.description }}</td><td>{{ i.due_date }}</td>
+        <td>{{ "Awaiting your quote" if i.status == "requested" else "Invoice sent" }}</td>
+        <td>
+          {% if i.status == "requested" %}
+          <form class="quote" data-ref="{{ i.id }}">
+            <input name="amount" type="number" min="1" step="0.01" placeholder="{{ '%.2f'|format(i.amount_cents / 100) if i.amount_cents else 'Price $' }}" required>
+            <select name="deposit_percent"><option value="30">30% deposit</option><option value="50">50% deposit</option><option value="100">Pay in full</option></select>
+            <button class="btn small">Send PayPal invoice</button>
+          </form>
+          {% else %}{{ fmt_money(i.amount_cents) }} · deposit {{ fmt_money(i.deposit_cents) }}{% endif %}
+        </td>
+      </tr>
+    {% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Activity</h2>
+  <ul class="events">{% for e in events %}<li><span class="muted">{{ e.created_at[:16].replace("T", " ") }}</span> {{ e.kind.replace("_", " ") }}{% if e.order_id %} · {{ e.order_id }}{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/dashboard.js"></script>{% endblock %}

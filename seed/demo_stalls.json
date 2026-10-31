@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Noor's Cardamom Kitchen",
+    "description": "Home bakery: Scandinavian-style cardamom buns, chai shortbread and Saturday sourdough.",
+    "category": "bakery",
+    "city": "Lowell, MA",
+    "lat": 42.6389,
+    "lng": -71.3221,
+    "pickup_address": "Porch pickup near Pawtucket Blvd, Lowell (exact address sent after payment)",
+    "lead_time_hours": 24,
+    "pickup_windows": [{"day": "fri", "start": "16:00", "end": "19:00"}, {"day": "sat", "start": "09:00", "end": "12:00"}],
+    "items": [
+      {"name": "Cardamom bun", "description": "Brioche dough, freshly ground cardamom, pearl sugar.", "price": 4.5, "unit": "each", "allergens": ["wheat", "dairy", "eggs"], "tags": ["bestseller"], "daily_capacity": 48},
+      {"name": "Cardamom buns, box of 6", "description": "Six buns in a gift box.", "price": 24, "unit": "box", "allergens": ["wheat", "dairy", "eggs"], "tags": ["gift"], "daily_capacity": 8},
+      {"name": "Chai shortbread", "description": "Bag of 10 spiced shortbread cookies.", "price": 9, "unit": "bag", "allergens": ["wheat", "dairy"], "tags": [], "daily_capacity": 20},
+      {"name": "Country sourdough loaf", "description": "48-hour ferment, naturally leavened.", "price": 11, "unit": "loaf", "allergens": ["wheat"], "tags": ["vegan"], "daily_capacity": 12}
+    ]
+  },
+  {
+    "name": "Merrimack Tamales",
+    "description": "Family-recipe tamales steamed fresh every weekend. Pork, chicken verde and vegan rajas.",
+    "category": "tamales",
+    "city": "Lowell, MA",
+    "lat": 42.6455,
+    "lng": -71.3075,
+    "pickup_address": "Pickup at the Saturday market, Lowell",
+    "lead_time_hours": 48,
+    "pickup_windows": [{"day": "sat", "start": "10:00", "end": "14:00"}, {"day": "sun", "start": "10:00", "end": "13:00"}],
+    "items": [
+      {"name": "Pork red chile tamales, dozen", "description": "Slow-cooked pork in guajillo sauce.", "price": 30, "unit": "dozen", "allergens": [], "tags": ["gluten-free", "spicy"], "daily_capacity": 25},
+      {"name": "Chicken salsa verde tamales, dozen", "description": "Tomatillo and green chile.", "price": 30, "unit": "dozen", "allergens": [], "tags": ["gluten-free"], "daily_capacity": 25},
+      {"name": "Vegan rajas tamales, dozen", "description": "Poblano strips, corn and potato.", "price": 28, "unit": "dozen", "allergens": [], "tags": ["vegan", "gluten-free"], "daily_capacity": 15}
+    ]
+  },
+  {
+    "name": "Pawtucket Pickle Co.",
+    "description": "Small-batch fermented pickles and hot sauce. Ships anywhere in the US.",
+    "category": "pickles",
+    "city": "Dracut, MA",
+    "lat": 42.6701,
+    "lng": -71.3020,
+    "pickup_address": "Ships via USPS, or pickup in Dracut",
+    "lead_time_hours": 24,
+    "ships": true,
+    "pickup_windows": [{"day": "any", "start": "12:00", "end": "18:00"}],
+    "items": [
+      {"name": "Garlic dill pickles, quart jar", "description": "Lacto-fermented, no vinegar.", "price": 14, "unit": "jar", "allergens": [], "tags": ["vegan", "gluten-free"], "daily_capacity": 30},
+      {"name": "Fermented habanero hot sauce", "description": "5 oz bottle.", "price": 10, "unit": "bottle", "allergens": [], "tags": ["vegan", "spicy"], "daily_capacity": 40}
+    ]
+  }
+]

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Buyer agent · OpenStall{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>Shop with an AI agent</h1>
+  <p class="lead">This agent uses the same MCP tools any assistant gets. Watch each tool call on the right. Payment always happens in PayPal, approved by you.</p>
+</section>
+<section class="agent-layout">
+  <div class="card chat">
+    <div id="messages">
+      <div class="msg bot">Hi! What are you looking for? Try: "A dozen tamales for Saturday, one of them vegan" or "cardamom buns for Friday pickup".</div>
+    </div>
+    <form id="chat-form">
+      <input id="chat-input" autocomplete="off" placeholder="Ask the agent to find and order something" maxlength="2000">
+      <button class="btn primary">Send</button>
+    </form>
+  </div>
+  <aside class="card trace">
+    <h3>Agent tool calls</h3>
+    <ol id="trace"></ol>
+  </aside>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/agent.js"></script>{% endblock %}

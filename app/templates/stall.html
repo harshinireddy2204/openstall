@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ stall.name }} · OpenStall{% endblock %}
+{% block head %}<script type="application/ld+json">{{ jsonld|safe }}</script>{% endblock %}
+{% block content %}
+<section class="stall-head">
+  <span class="tag">{{ stall.category }}</span>
+  <h1>{{ stall.name }}</h1>
+  <p class="lead">{{ stall.description }}</p>
+  <p class="muted">{{ stall.city }} · {{ stall.pickup_address }} · order {{ stall.lead_time_hours }}h ahead{% if stall.ships %} · ships{% endif %}</p>
+  <p class="muted">Pickup:
+    {% for w in stall.pickup_windows %}<span class="pill">{{ w.day|upper }} {{ w.start }} to {{ w.end }}</span>{% endfor %}
+  </p>
+</section>
+
+<form id="order-form" class="card" data-stall="{{ stall.id }}">
+  <table class="menu">
+    <thead><tr><th>Item</th><th>Price</th><th>Qty</th></tr></thead>
+    <tbody>
+      {% for it in stall["items"] %}
+      <tr>
+        <td><strong>{{ it.name }}</strong><br><span class="muted">{{ it.description }}{% if it.allergens %} · Contains: {{ it.allergens|join(", ") }}{% endif %}</span></td>
+        <td>{{ fmt_money(it.price_cents) }} <span class="muted">/ {{ it.unit }}</span></td>
+        <td><input type="number" min="0" max="200" value="0" data-item="{{ it.id }}" class="qty"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="row">
+    <label>Pickup date <input type="date" name="pickup_date" required></label>
+    <label>Your name <input name="buyer_name" maxlength="80"></label>
+  </div>
+  <p id="availability" class="muted"></p>
+  <button class="btn primary" type="submit">Order and pay with PayPal</button>
+  <p id="order-status" class="error"></p>
+</form>
+
+<section class="card agent-box">
+  <h2>For AI agents</h2>
+  <p>This stall is listed on the OpenStall MCP server as <code>{{ stall.id }}</code>.</p>
+  <pre><code>{{ settings.mcp_url }}</code></pre>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/stall.js"></script>{% endblock %}

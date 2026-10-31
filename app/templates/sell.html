@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Open a stall · OpenStall{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>Open your stall</h1>
+  <p class="lead">Upload a photo of your menu (chalkboard, flyer, Instagram post) or type it. Claude builds your catalog and you check it.</p>
+
+  <form id="extract-form" class="card">
+    <label>Menu photo <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif"></label>
+    <p class="muted">No photo handy? Try a sample: <a href="/static/samples/chalkboard_menu.png" download>chalkboard menu</a></p>
+    <label>Or type your menu
+      <textarea name="text" rows="5" placeholder="Samosas - $3 each&#10;Mango lassi - $5&#10;Pickup Saturdays 10 to 2"></textarea>
+    </label>
+    <button class="btn primary" type="submit">Read my menu</button>
+    <p id="extract-status" class="muted"></p>
+  </form>
+
+  <form id="stall-form" class="card hidden">
+    <h2>Check your catalog</h2>
+    <div id="questions" class="notice hidden"></div>
+    <div class="row">
+      <label>Stall name <input name="name" required maxlength="80"></label>
+      <label>Category <input name="category" placeholder="bakery"></label>
+    </div>
+    <label>Description <input name="description"></label>
+    <div class="row">
+      <label>City <input name="city" value="Lowell, MA"></label>
+      <label>Pickup address or note <input name="pickup_address" placeholder="Sent after payment"></label>
+    </div>
+    <div class="row">
+      <label>PayPal email (sandbox business account) <input name="paypal_email" type="email" placeholder="you@business.example.com"></label>
+      <label>Notice needed (hours) <input name="lead_time_hours" type="number" min="0" value="24"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="ships"> I can ship orders</label>
+
+    <h3>Items</h3>
+    <table class="edit-table" id="items-table">
+      <thead><tr><th>Item</th><th>Price ($)</th><th>Unit</th><th>Per day max</th><th>Allergens</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button type="button" class="btn small" id="add-item">Add item</button>
+
+    <h3>Pickup windows</h3>
+    <table class="edit-table" id="windows-table">
+      <thead><tr><th>Day</th><th>From</th><th>To</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button type="button" class="btn small" id="add-window">Add window</button>
+
+    <button class="btn primary" type="submit">Publish my stall</button>
+    <p id="publish-status" class="muted"></p>
+  </form>
+
+  <div id="published" class="card success hidden"></div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/sell.js"></script>{% endblock %}

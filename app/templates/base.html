@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}OpenStall{% endblock %}</title>
+  <meta name="description" content="OpenStall makes sellers without a website buyable by AI shopping agents, with PayPal checkout.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="awning"></span>OpenStall</a>
+    <nav>
+      <a href="/sell">Open a stall</a>
+      <a href="/shop">Try the buyer agent</a>
+      <a href="/llms.txt">For agents</a>
+    </nav>
+  </header>
+  {% if not paypal_live %}
+  <div class="banner">Demo mode: PayPal is simulated because no sandbox credentials are configured.</div>
+  {% endif %}
+  <main>{% block content %}{% endblock %}</main>
+  <footer>
+    <p>Payments run on the PayPal sandbox. No real money moves. MCP endpoint: <code>{{ settings.mcp_url }}</code></p>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

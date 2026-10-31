@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Agent-ready shops for sellers without a website</p>
+    <h1>AI shopping agents can't see the corner bakery. <em>Now they can.</em></h1>
+    <p class="lead">Snap a photo of your menu. OpenStall turns it into a catalog any AI agent can search, and every order is paid through PayPal, which you already use.</p>
+    <div class="cta">
+      <a class="btn primary" href="/sell">Open a stall in 60 seconds</a>
+      <a class="btn" href="/shop">Watch an agent shop</a>
+    </div>
+  </div>
+  <ol class="steps">
+    <li><strong>Snap</strong><span>Claude reads your chalkboard or flyer into items, prices, allergens and pickup times.</span></li>
+    <li><strong>List</strong><span>Your stall goes live on the OpenStall MCP directory for Claude, ChatGPT and other agents.</span></li>
+    <li><strong>Get paid</strong><span>Agents build the order, the buyer approves in PayPal, and you stay the merchant of record.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Stalls on OpenStall</h2>
+  <div class="grid">
+    {% for s in stalls %}
+    <a class="card stall-card" href="/s/{{ s.id }}">
+      <span class="tag">{{ s.category }}</span>
+      <h3>{{ s.name }}</h3>
+      <p>{{ s.description }}</p>
+      <p class="muted">{{ s.city }} · {{ s["items"]|length }} items · {{ s.lead_time_hours }}h notice</p>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card agent-box">
+  <h2>Connect your own AI assistant</h2>
+  <p>Add this MCP server to Claude Desktop, or any MCP client, and ask it to shop locally:</p>
+  <pre><code>{{ settings.mcp_url }}</code></pre>
+  <p class="muted">Tools: find_stalls, get_menu, check_availability, place_order, get_order_status, request_custom_order, get_custom_order_status</p>
+</section>
+{% endblock %}

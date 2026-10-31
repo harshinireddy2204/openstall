@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Simulated PayPal approval{% endblock %}
+{% block content %}
+<section class="narrow">
+  <div class="card mock-paypal">
+    <p class="eyebrow">Simulated PayPal approval (demo mode only)</p>
+    <h1>Pay {{ order.total }} to {{ order.stall_name }}</h1>
+    <ul>{% for l in order.lines %}<li>{{ l.quantity }} × {{ l.name }}</li>{% endfor %}</ul>
+    <p class="muted">With sandbox credentials configured, this step is the real PayPal sandbox checkout.</p>
+    <form method="post" action="/mock-paypal/approve" class="row">
+      <input type="hidden" name="token" value="{{ token }}">
+      <button class="btn primary" name="decision" value="approve">Approve and pay</button>
+      <button class="btn" name="decision" value="cancel">Cancel</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
