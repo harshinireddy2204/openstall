@@ -15,6 +15,7 @@ AI-referred retail traffic grew 393% year over year in Q1 2026 (Adobe). Shopify 
 1. **Snap.** The seller uploads a menu photo (or types it). Claude extracts a structured catalog: items, prices, allergens, daily capacity, pickup windows, lead time. The seller reviews it.
 2. **List.** The stall is published to the OpenStall **MCP server**, plus a public page with schema.org JSON-LD and `/llms.txt`.
 3. **Get paid.** Any agent can `find_stalls`, `get_menu`, `check_availability` and `place_order`. Each order is a **PayPal Orders v2** checkout. The human approves in PayPal; the agent never touches credentials.
+4. **Learn.** Seller **Insights**, built on **AG Studio**, shows how much revenue AI agents bring, the agent funnel (viewed menu, checked availability, started PayPal checkout, paid), a pickup board for the next 7 days, and a **demand radar**: what agents asked for that the seller could not sell (sold out, no pickup that day, too little notice). A Claude-powered Studio assistant answers plain-language questions, builds charts, and can raise an item's daily capacity after the seller confirms.
 
 ## How PayPal is used
 
@@ -31,6 +32,15 @@ AI-referred retail traffic grew 393% year over year in Q1 2026 (Adobe). Shopify 
 
 - **Claude (Anthropic API)**: vision menu-to-catalog extraction with forced tool output and a strict JSON schema (`app/ai.py`), and a demo buyer agent that shops through exactly the same tools external agents get (`app/buyer_agent.py`).
 - **Model Context Protocol**: official MCP Python SDK, streamable HTTP at `/agent/mcp` (`app/mcp_server.py`).
+- **AG Studio AI**: the Studio agent harness runs on Claude through a small server bridge (`/api/studio/llm`, `app/insights.py`) that translates Studio turns into Anthropic Messages with tool use. OpenStall adds its own Studio tools: `get_unmet_demand`, `get_stall_rules`, `get_pickup_board` and `set_daily_capacity` (the seller confirms every change), plus two custom widgets (Pickup board, Demand radar).
+
+## Seller Insights (AG Studio)
+
+- Open it from the seller dashboard ("Open Insights"). It is behind the same private owner key.
+- Data sources: `orders` (one row per paid order line, channel `AI agent` or `Web`), `demand` (missed agent demand), `agent_funnel`.
+- Demo stalls ship with clearly labelled `Sample history` rows so the dashboard is not empty; real orders are labelled `Live` and can be filtered.
+- The front end lives in `studio/` and is bundled with esbuild into `app/static/studio/insights.js`, which is committed, so the Python deploy needs no Node. To rebuild: `cd studio && npm install && npm run build`.
+- `AG_STUDIO_LICENSE_KEY` removes the trial watermark. It is read from the environment, never committed.
 
 ## Payment safety design (the part we are proudest of)
 
@@ -103,6 +113,8 @@ app/
   tools.py         agent tools shared by MCP and the buyer agent
   mcp_server.py    MCP server
   buyer_agent.py   demo Claude shopping agent
+  insights.py      Insights data, demand radar, sample history, Claude bridge for AG Studio
+studio/            AG Studio front end source (built into app/static/studio/insights.js)
 seed/              demo stalls
 scripts/           sandbox smoke test
 tests/             scenario tests

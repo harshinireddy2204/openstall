@@ -112,3 +112,24 @@ th { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: 
 .track-form input { margin: 0; flex: 1; }
 .track-form .btn { white-space: nowrap; }
 #orders .order-card { max-width: none; }
+
+/* ---------- Seller Insights (AG Studio) ---------- */
+.insights-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.insights-head h1 { margin: 0 0 2px; font-size: 1.9rem; }
+.insights-head p { margin: 0 0 6px; }
+.insights-head { margin-bottom: 10px; }
+.studio-host { height: calc(100vh - 120px); min-height: 680px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card); }
+.os-widget { height: 100%; overflow: auto; padding: 4px 6px; font: 14px/1.45 Inter, system-ui, sans-serif; color: var(--ink); box-sizing: border-box; }
+.os-title { font-weight: 600; margin: 2px 0 10px; }
+.os-muted { color: var(--muted); font-size: .88rem; }
+.os-day { border-top: 1px solid var(--line); padding: 8px 0; }
+.os-day-h { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.os-day-h span { color: var(--muted); font-size: .85rem; }
+.os-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 2fr minmax(140px, 1fr); gap: 10px; align-items: center; padding: 3px 0; }
+.os-bar { height: 8px; background: #f1ebe2; border-radius: 99px; overflow: hidden; }
+.os-bar i { display: block; height: 100%; background: var(--ok); border-radius: 99px; }
+.os-bar i.full { background: var(--accent); }
+.os-num { color: var(--muted); font-size: .85rem; text-align: right; }
+.os-demand { border-top: 1px solid var(--line); padding: 8px 0; }
+.os-pill { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 99px; background: #fdf0e3; color: var(--accent); font-size: .78rem; }
+@media (max-width: 640px) { .os-row { grid-template-columns: 1fr; } .os-num { text-align: left; } }

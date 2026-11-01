@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Insights · {{ stall.name }}{% endblock %}
+{% block head %}<style>main { max-width: none; padding: 16px 16px 32px; }</style>{% endblock %}
+{% block content %}
+<section class="insights-head">
+  <div>
+    <p class="eyebrow">Seller Insights · keep this link private</p>
+    <h1>{{ stall.name }}</h1>
+    <p class="muted">Ask the assistant on the left a question in plain words. Every chart is editable.
+      "Sample history" rows are demo data so the dashboard is not empty; real orders are marked "Live".</p>
+  </div>
+  <p><a class="btn" href="/s/{{ stall.id }}/dashboard?key={{ key|urlencode }}">Back to orders</a></p>
+</section>
+<div id="studio" class="studio-host"></div>
+<script type="application/json" id="studio-config">{{ studio_config|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/studio/insights.js"></script>{% endblock %}

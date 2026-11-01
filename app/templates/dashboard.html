@@ -5,6 +5,8 @@
   <p class="eyebrow">Seller dashboard · keep this link private</p>
   <h1>{{ stall.name }}</h1>
   <p><a href="/s/{{ stall.id }}">Public stall page</a> · Listed for agents at <code>{{ settings.mcp_url }}</code></p>
+  <p><a class="btn primary" href="/s/{{ stall.id }}/insights?key={{ key|urlencode }}">Open Insights</a>
+     <span class="muted">Sales, AI agent share, demand you missed, and an assistant that can answer questions about your shop.</span></p>
 </section>
 
 <section class="card">

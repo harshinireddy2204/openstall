@@ -16,11 +16,13 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import ai, buyer_agent, service
+from . import ai, buyer_agent, insights, service
 from .config import ROOT, settings
 from .db import log_event, now_iso, query, query_one, tx
 from .mcp_server import build_app, mcp
@@ -37,6 +39,11 @@ templates.env.globals.update(settings=settings, fmt_money=service.fmt_money, pay
 
 def seed_demo_data() -> None:
     if query_one("SELECT 1 FROM stalls LIMIT 1"):
+        # Older databases: give the demo stalls their sample history once.
+        for stall in json.loads((ROOT / "seed" / "demo_stalls.json").read_text()):
+            sid = query_one("SELECT id FROM stalls WHERE name=?", (stall["name"],))
+            if sid and not query_one("SELECT 1 FROM orders WHERE stall_id=? AND buyer_note LIKE '[sample]%' LIMIT 1", (sid["id"],)):
+                insights.seed_sample_history(sid["id"])
         return
     demo_email = os.getenv("DEMO_SELLER_PAYPAL_EMAIL", "").strip()
     demo_key = os.getenv("DEMO_OWNER_KEY", "").strip()  # stable dashboard links for judges across restarts
@@ -45,6 +52,7 @@ def seed_demo_data() -> None:
         if demo_key:
             stall["owner_key"] = demo_key
         created = service.create_stall(stall)
+        insights.seed_sample_history(created["id"])
         log.info("Seeded stall %s (dashboard key: %s)", created["id"], created["owner_key"])
 
 
@@ -61,6 +69,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OpenStall", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=2048)  # the Insights bundle is ~5 MB raw, ~1.3 MB gzipped
 
 # ------------------------------------------------------------ rate limiting
 # (path prefix, method, max requests, window seconds). In-memory, per client IP: fine for one instance.
@@ -70,6 +79,7 @@ RATE_LIMITS = [
     ("/api/catalog/extract", "POST", 10, 600),
     ("/agent/mcp", "POST", 120, 60),
     ("/webhooks/", "POST", 300, 60),
+    ("/api/studio/llm", "POST", 40, 600),     # Insights assistant turns (each costs a Claude call)
 ]
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)
 _hits_lock = threading.Lock()
@@ -168,6 +178,21 @@ def dashboard(request: Request, stall_id: str, key: str = ""):
     return templates.TemplateResponse(
         request, "dashboard.html", {"stall": stall, "orders": orders, "invoices": invoices, "events": events, "key": key}
     )
+
+
+@app.get("/s/{stall_id}/insights", response_class=HTMLResponse)
+def insights_page(request: Request, stall_id: str, key: str = ""):
+    try:
+        stall = service.check_owner(stall_id, key)
+    except PermissionError:
+        raise HTTPException(403, "Open the Insights link from your seller dashboard.")
+    return templates.TemplateResponse(request, "insights.html", {
+        "stall": stall, "key": key,
+        "studio_config": {
+            "stallId": stall_id, "key": key, "stallName": stall["name"],
+            "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live,
+        },
+    })
 
 
 @app.get("/orders", response_class=HTMLResponse)
@@ -280,6 +305,44 @@ def api_send_quote(stall_id: str, ref: str, body: QuoteIn):
     service.check_owner(stall_id, body.key)
     cents = service.to_cents(body.amount) or 0
     return service.send_custom_quote(stall_id, ref, cents, body.deposit_percent)
+
+
+# --------------------------------------------------------------- seller Insights
+@app.get("/api/stalls/{stall_id}/insights")
+def api_insights(stall_id: str, key: str = ""):
+    stall = service.check_owner(stall_id, key)
+    return {
+        "sources": insights.insights_sources(stall_id),
+        "demand": insights.demand_summary(stall_id),
+        "pickup_board": insights.pickup_board(stall_id),
+        "rules": insights.stall_rules(stall),
+    }
+
+
+class CapacityIn(BaseModel):
+    key: str
+    item_id: int
+    daily_capacity: int | None = Field(default=None, ge=0, le=10000)
+
+
+@app.post("/api/stalls/{stall_id}/capacity")
+def api_set_capacity(stall_id: str, body: CapacityIn):
+    service.check_owner(stall_id, body.key)
+    return service.set_daily_capacity(stall_id, body.item_id, body.daily_capacity)
+
+
+@app.post("/api/studio/llm")
+async def api_studio_llm(request: Request, stall: str = "", key: str = ""):
+    """Claude bridge for the AG Studio agent. Owner key required so only the seller spends tokens."""
+    service.check_owner(stall, key)
+    raw = await request.body()
+    if len(raw) > 400_000:
+        raise HTTPException(413, "Request too large")
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, "Invalid JSON")
+    return await run_in_threadpool(insights.run_studio_turn, body)
 
 
 # ------------------------------------------------------------------ buyer API

@@ -23,3 +23,5 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5-5
+      - key: AG_STUDIO_LICENSE_KEY
+        sync: false

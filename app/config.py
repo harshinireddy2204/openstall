@@ -38,6 +38,9 @@ class Settings:
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     anthropic_model: str = field(default_factory=lambda: _env("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
 
+    # AG Studio (seller Insights). Optional: without it the dashboard shows a trial watermark.
+    ag_studio_license_key: str = field(default_factory=lambda: _env("AG_STUDIO_LICENSE_KEY"))
+
     # Storage
     database_path: str = field(default_factory=lambda: _env("DATABASE_PATH", str(ROOT / "openstall.db")))
 

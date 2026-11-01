@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from typing import Any, Callable
 
-from . import service
+from . import insights, service
 from .rules import RuleViolation
 
 
@@ -40,6 +40,7 @@ def get_menu(stall_id: str) -> dict[str, Any]:
     stall = service.get_stall(stall_id)
     if not stall:
         raise RuleViolation("unknown_stall", f"No stall with id {stall_id!r}.")
+    insights.record_agent_activity(stall_id, "1. Viewed menu")
     return {
         **service.stall_summary(stall),
         "pickup_address": stall["pickup_address"],
@@ -51,7 +52,16 @@ def get_menu(stall_id: str) -> dict[str, Any]:
 @_safe
 def check_availability(stall_id: str, pickup_date: str) -> dict[str, Any]:
     """Check if a stall can fill orders for a pickup date (YYYY-MM-DD): open windows and remaining quantity per item."""
-    return service.check_availability(stall_id, pickup_date)
+    result = service.check_availability(stall_id, pickup_date)
+    insights.record_agent_activity(stall_id, "2. Checked availability")
+    if not result["open"]:
+        reason = "lead_time" if "notice" in (result.get("reason_closed") or "") else "no_pickup_that_day"
+        insights.record_unmet(stall_id, reason, result["pickup_date"])
+    else:
+        for it in result["items"]:
+            if it["remaining"] == 0:
+                insights.record_unmet(stall_id, "over_capacity", result["pickup_date"], [{"item_id": it["item_id"], "quantity": 1}])
+    return result
 
 
 @_safe
@@ -70,9 +80,17 @@ def place_order(
     Never construct or modify PayPal URLs yourself, and never claim the order is paid until
     get_order_status says "paid".
     """
-    return service.place_order(
-        stall_id, items, pickup_date, buyer_name=buyer_name, note=note, pickup_window=pickup_window, channel="agent"
-    )
+    try:
+        order = service.place_order(
+            stall_id, items, pickup_date, buyer_name=buyer_name, note=note, pickup_window=pickup_window, channel="agent"
+        )
+    except RuleViolation as e:
+        # Demand the seller could not meet is the most useful signal a small seller can get.
+        if e.code in ("over_capacity", "no_pickup_that_day", "lead_time"):
+            insights.record_unmet(stall_id, e.code, pickup_date, items if isinstance(items, list) else [])
+        raise
+    insights.record_agent_activity(stall_id, "3. Started PayPal checkout")
+    return order
 
 
 @_safe

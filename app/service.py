@@ -635,8 +635,23 @@ def seller_update_order(stall_id: str, order_id: str, action: str, **kw: Any) ->
 
 def list_orders(stall_id: str) -> list[dict[str, Any]]:
     return [order_view(o["id"]) for o in query(
-        "SELECT id FROM orders WHERE stall_id=? ORDER BY pickup_date, created_at", (stall_id,)
+        "SELECT id FROM orders WHERE stall_id=? AND COALESCE(buyer_note,'') NOT LIKE '[sample]%' "
+        "ORDER BY pickup_date, created_at", (stall_id,)
     )]
+
+
+def set_daily_capacity(stall_id: str, item_id: int, capacity: int | None) -> dict[str, Any]:
+    """Seller (or the seller's Insights assistant, after the seller confirms) changes how many of an item they make per day."""
+    if capacity is not None and not (0 <= int(capacity) <= 10000):
+        raise RuleViolation("invalid_capacity", "Daily capacity must be between 0 and 10000, or empty for unlimited.")
+    with tx() as c:
+        row = c.execute("SELECT name, daily_capacity FROM items WHERE id=? AND stall_id=?", (int(item_id), stall_id)).fetchone()
+        if not row:
+            raise RuleViolation("unknown_item", f"Item {item_id} is not on this stall's menu.")
+        c.execute("UPDATE items SET daily_capacity=? WHERE id=? AND stall_id=?",
+                  (None if capacity is None else int(capacity), int(item_id), stall_id))
+    log_event("capacity_changed", stall_id=stall_id, item_id=int(item_id), item=row[0], before=row[1], after=capacity)
+    return {"item_id": int(item_id), "name": row[0], "daily_capacity_before": row[1], "daily_capacity": capacity}
 
 
 # --------------------------------------------------------------- custom orders
