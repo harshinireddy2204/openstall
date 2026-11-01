@@ -399,6 +399,7 @@ def order_view(order_id: str) -> dict[str, Any]:
         "channel": o["channel"],
         "tracking": o["tracking"],
     }
+    view["steps"] = order_steps(o)
     if o["status"] == "pending_payment" and o["approve_url"]:
         view["paypal_approval_url"] = o["approve_url"]
         view["next_step"] = (
@@ -406,6 +407,65 @@ def order_view(order_id: str) -> dict[str, Any]:
             "The order is held for %d minutes." % settings.hold_minutes
         )
     return view
+
+
+# Which events mark each buyer-visible milestone (first occurrence wins).
+_MILESTONE_EVENTS = {
+    "placed": ("order_created",),
+    "paid": ("order_paid", "payment_review"),
+    "ready": ("seller_ready",),
+    "picked_up": ("seller_picked_up",),
+    "shipped": ("seller_ship",),
+    "refunded": ("seller_refund", "refunded_by_paypal", "amount_mismatch"),
+    "cancelled": ("order_cancelled",),
+    "expired": ("order_expired",),
+    "sold_out": ("sold_out_not_captured",),
+}
+
+
+def order_steps(o: dict[str, Any]) -> list[dict[str, Any]]:
+    """Buyer-facing progress tracker: [{key, label, state: done|current|todo|stopped, at}]."""
+    times: dict[str, str] = {}
+    for e in query("SELECT kind, created_at FROM events WHERE order_id=? ORDER BY id", (o["id"],)):
+        for key, kinds in _MILESTONE_EVENTS.items():
+            if e["kind"] in kinds and key not in times:
+                times[key] = e["created_at"]
+    times.setdefault("placed", o["created_at"])
+
+    status = o["status"]
+    if status in ("cancelled", "expired", "sold_out", "payment_failed"):
+        label = {"cancelled": "Cancelled", "expired": "Expired, not paid in time",
+                 "sold_out": "Sold out, not charged", "payment_failed": "Payment failed, not charged"}[status]
+        flow = [("placed", "Order placed"), (status, label)]
+        stop = status
+    elif status in ("refunded", "needs_attention"):
+        flow = [("placed", "Order placed"), ("paid", "Paid with PayPal"),
+                ("refunded", "Refunded to PayPal" if status == "refunded" else "Refund being fixed by the seller")]
+        stop = "refunded"
+    elif status == "shipped":
+        flow = [("placed", "Order placed"), ("paid", "Paid with PayPal"), ("shipped", "Shipped")]
+        stop = None
+    else:
+        flow = [("placed", "Order placed"), ("paid", "Paid with PayPal"),
+                ("ready", "Ready for pickup"), ("picked_up", "Picked up")]
+        stop = None
+
+    # Number of milestones already completed (including "placed").
+    reached = {
+        "pending_payment": 1, "capturing": 1, "payment_review": 1, "paid": 2, "ready": 3, "picked_up": 4,
+        "shipped": 3, "refunded": 3, "needs_attention": 3,
+        "cancelled": 2, "expired": 2, "sold_out": 2, "payment_failed": 2,
+    }.get(status, 1)
+    steps = []
+    for i, (key, label) in enumerate(flow):
+        if i < reached:
+            state = "stopped" if key == stop else "done"
+        elif i == reached:
+            state = "current"
+        else:
+            state = "todo"
+        steps.append({"key": key, "label": label, "state": state, "at": times.get(key)})
+    return steps
 
 
 def complete_payment(order_id: str) -> dict[str, Any]:
@@ -734,6 +794,7 @@ def handle_webhook(event: dict[str, Any]) -> str:
         if refunded >= o["subtotal_cents"]:
             if o["status"] != "refunded":
                 _set_status(o["id"], "refunded")
+                log_event("refunded_by_paypal", stall_id=o["stall_id"], order_id=o["id"])
             return "marked_refunded"
         log_event("partial_refund", stall_id=o["stall_id"], order_id=o["id"], refunded_cents=refunded)
         return "partial_refund_logged"

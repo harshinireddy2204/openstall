@@ -654,3 +654,35 @@ def test_confirm_endpoint_only_captures_after_approval(client):
     _approve(o)
     assert client.post(f"/api/orders/{o['order_id']}/confirm").json()["status"] == "paid"
     assert client.post(f"/api/orders/{o['order_id']}/confirm").json()["status"] == "paid"  # idempotent
+
+
+def _states(view):
+    return [(s["key"], s["state"]) for s in view["steps"]]
+
+
+def test_buyer_progress_tracker_follows_seller_actions(client):
+    o = _new_order()
+    assert _states(o) == [("placed", "done"), ("paid", "current"), ("ready", "todo"), ("picked_up", "todo")]
+    paid = approve_and_return(client, o)
+    assert _states(paid)[1:3] == [("paid", "done"), ("ready", "current")]
+    key = db.query_one("SELECT owner_key FROM stalls WHERE id=?", (NOOR,))["owner_key"]
+    url = f"/api/stalls/{NOOR}/orders/{o['order_id']}"
+    client.post(url, json={"key": key, "action": "ready"})
+    view = client.get(f"/api/orders/{o['order_id']}").json()
+    assert _states(view)[2:] == [("ready", "done"), ("picked_up", "current")] and view["steps"][2]["at"]
+    client.post(url, json={"key": key, "action": "picked_up"})
+    assert all(st == "done" for _, st in _states(client.get(f"/api/orders/{o['order_id']}").json()))
+
+
+def test_buyer_tracker_shows_refund_and_cancel():
+    o = _new_order()
+    _approve(o)
+    service.complete_payment(o["order_id"])
+    refunded = service.seller_update_order(NOOR, o["order_id"], "refund")
+    assert _states(refunded) == [("placed", "done"), ("paid", "done"), ("refunded", "stopped")]
+    c = service.cancel_order(_new_order()["order_id"])
+    assert _states(c) == [("placed", "done"), ("cancelled", "stopped")]
+
+
+def test_my_orders_page_renders(client):
+    assert client.get("/orders").status_code == 200

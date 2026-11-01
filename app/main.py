@@ -170,6 +170,11 @@ def dashboard(request: Request, stall_id: str, key: str = ""):
     )
 
 
+@app.get("/orders", response_class=HTMLResponse)
+def my_orders(request: Request):
+    return templates.TemplateResponse(request, "my_orders.html", {})
+
+
 @app.get("/shop", response_class=HTMLResponse)
 def agent_page(request: Request):
     return templates.TemplateResponse(request, "agent.html", {})

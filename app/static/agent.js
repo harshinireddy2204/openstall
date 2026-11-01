@@ -17,6 +17,7 @@ async function addOrderCard(orderId) {
   const el = OpenStallCheckout.card(await res.json());
   el.classList.add("msg", "bot");
   msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
+  OpenStallCheckout.track(orderId, el);
 }
 
 form.addEventListener("submit", async (e) => {

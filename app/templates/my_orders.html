@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}My orders · OpenStall{% endblock %}
+{% block content %}
+<section class="narrow">
+  <h1>My orders</h1>
+  <p class="lead">Orders placed from this browser, by you or your AI agent. They update live as the seller prepares them.</p>
+  <form id="track-form" class="track-form">
+    <input id="track-id" placeholder="Have an order number? e.g. OS-1A2B3C4D5E" maxlength="20">
+    <button class="btn">Track order</button>
+  </form>
+  <div id="orders"></div>
+  <p id="empty" class="muted hidden">No orders yet. <a href="/">Browse stalls</a> or <a href="/shop">ask the buyer agent</a>.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/checkout.js"></script><script src="/static/my_orders.js"></script>{% endblock %}

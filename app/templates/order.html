@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Order {{ order.order_id }} · OpenStall{% endblock %}
 {% block scripts %}
+<script src="/static/checkout.js"></script>
 <script>
+  (async () => {
+    const box = document.getElementById("order-live");
+    const res = await fetch(`/api/orders/${box.dataset.order}`);
+    if (res.ok) { const el = OpenStallCheckout.card(await res.json()); box.appendChild(el); OpenStallCheckout.track(box.dataset.order, el); }
+  })();
   if (window.opener && !window.opener.closed) {
     try { window.opener.postMessage({ type: "openstall-order", order_id: {{ order.order_id|tojson }} }, location.origin); } catch (e) {}
     document.body.insertAdjacentHTML("afterbegin", '<div class="banner">Payment step finished. You can close this window.</div>');
@@ -12,16 +18,8 @@
 {% block content %}
 <section class="narrow">
   <p class="eyebrow">Order {{ order.order_id }}</p>
-  <h1>{{ order.status_label }}</h1>
   {% if error %}<p class="notice">{{ error }}</p>{% endif %}
-  <div class="card">
-    <h2>{{ order.stall_name }}</h2>
-    <ul>{% for l in order.lines %}<li>{{ l.quantity }} × {{ l.name }} · {{ fmt_money(l.total_cents) }}</li>{% endfor %}</ul>
-    <p><strong>Total {{ order.total }}</strong></p>
-    <p>Pickup {{ order.pickup_date }} · {{ order.pickup_window }}<br><span class="muted">{{ order.pickup_address }}</span></p>
-    {% if order.paypal_approval_url %}<a class="btn primary" href="{{ order.paypal_approval_url }}">Approve payment in PayPal</a>{% endif %}
-    {% if order.tracking %}<p>Tracking: {{ order.tracking.carrier }} {{ order.tracking.number }}</p>{% endif %}
-  </div>
-  <p><a href="/s/{{ order.stall_id }}">Back to the stall</a></p>
+  <div id="order-live" data-order="{{ order.order_id }}"></div>
+  <p><a href="/orders">All my orders</a> · <a href="/s/{{ order.stall_id }}">Back to the stall</a></p>
 </section>
 {% endblock %}
