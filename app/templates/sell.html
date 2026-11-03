@@ -28,7 +28,8 @@
       <label>Pickup address or note <input name="pickup_address" placeholder="Sent after payment"></label>
     </div>
     <div class="row">
-      <label>PayPal email (sandbox business account) <input name="paypal_email" type="email" placeholder="you@business.example.com"></label>
+      <label>PayPal email (sandbox business account) <input name="paypal_email" type="email" placeholder="Leave blank to try the demo">
+        <span class="muted">Leave blank to try OpenStall: payments go to the OpenStall sandbox merchant. Don't enter a real PayPal email; the sandbox can't pay it.</span></label>
       <label>Notice needed (hours) <input name="lead_time_hours" type="number" min="0" value="24"></label>
     </div>
     <label class="check"><input type="checkbox" name="ships"> I can ship orders</label>

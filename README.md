@@ -89,6 +89,13 @@ Run the tests: `python -m pytest -q`
 
 Add `https://<your-host>/agent/mcp` as a remote MCP server (streamable HTTP) in Claude or any MCP client, then ask: *"Find me a dozen vegan tamales near Lowell for Saturday pickup."*
 
+## Deploy on Railway (recommended)
+
+1. New project, Deploy from GitHub repo, pick this repo. `railway.json` sets the start command and health check; `.python-version` pins Python 3.13.
+2. Add a **Volume** to the service mounted at `/data`, and set `DATABASE_PATH=/data/openstall.db` so stalls and orders survive deploys.
+3. Settings, Networking, **Generate Domain**. The app reads `RAILWAY_PUBLIC_DOMAIN` automatically (or set `BASE_URL`).
+4. Add the same variables as `.env.example`. Point a PayPal sandbox webhook at `https://<your-domain>/webhooks/paypal` and set `PAYPAL_WEBHOOK_ID`.
+
 ## Deploy on Render
 
 `render.yaml` is included. Create a Blueprint from the repo, then set `BASE_URL` (your Render URL), the PayPal sandbox keys, `PAYPAL_WEBHOOK_ID`, `ANTHROPIC_API_KEY` and optionally `DEMO_OWNER_KEY`.

@@ -8,12 +8,15 @@
     <div class="cta">
       <a class="btn primary" href="/sell">Open a stall in 60 seconds</a>
       <a class="btn" href="/shop">Watch an agent shop</a>
+      <a class="btn" href="/market">Market run: many stalls, one PayPal payment</a>
     </div>
   </div>
   <ol class="steps">
     <li><strong>Snap</strong><span>Claude reads your chalkboard or flyer into items, prices, allergens and pickup times.</span></li>
     <li><strong>List</strong><span>Your stall goes live on the OpenStall MCP directory for Claude, ChatGPT and other agents.</span></li>
     <li><strong>Get paid</strong><span>Agents build the order, the buyer approves in PayPal, and you stay the merchant of record.</span></li>
+    <li><strong>Shop the whole market</strong><span>An agent fills one basket from several stalls. One PayPal approval pays every seller directly.</span></li>
+    <li><strong>See missed demand</strong><span>Insights shows what AI agents wanted that you could not sell, like "21 more buns every Friday".</span></li>
   </ol>
 </section>
 
@@ -35,6 +38,6 @@
   <h2>Connect your own AI assistant</h2>
   <p>Add this MCP server to Claude Desktop, or any MCP client, and ask it to shop locally:</p>
   <pre><code>{{ settings.mcp_url }}</code></pre>
-  <p class="muted">Tools: find_stalls, get_menu, check_availability, place_order, get_order_status, request_custom_order, get_custom_order_status</p>
+  <p class="muted">Tools: find_stalls, get_menu, check_availability, place_order, place_market_order, get_order_status, get_market_order_status, request_custom_order, get_custom_order_status</p>
 </section>
 {% endblock %}
