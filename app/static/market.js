@@ -7,6 +7,12 @@
   const result = document.getElementById("market-result");
   const money = (c) => "$" + (c / 100).toFixed(2);
   const open = {};
+  // One id per basket: if the same basket is sent twice (double click, slow network) the server
+  // returns the first market run instead of creating a second one.
+  const newRef = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+  let clientRef = newRef();
+  let placed = false;  // once a market run exists, this basket is locked until the buyer starts a new one
+  let sending = false;
 
   // Default to the next Saturday at least 2 days away (markets are mostly weekend).
   const d = new Date(); d.setDate(d.getDate() + 2);
@@ -30,7 +36,28 @@
     totalEl.textContent = money(total);
     const closed = b.filter((st) => open[st.stall_id] === false);
     summaryEl.textContent = b.length ? `${b.length} stall${b.length > 1 ? "s" : ""} in your basket` + (closed.length ? `, ${closed.length} closed that day` : "") : "Nothing in your basket yet";
-    submit.disabled = !b.length || closed.length > 0;
+    submit.disabled = placed || sending || !b.length || closed.length > 0;
+  }
+
+  function lock(basket) {
+    placed = true;
+    form.querySelectorAll("input").forEach((i) => { i.disabled = true; });
+    dateEl.disabled = true; document.getElementById("market-name").disabled = true;
+    submit.disabled = true;
+    submit.textContent = basket.status === "paid" ? "Paid" : "Market run created";
+    if (!document.getElementById("market-new")) {
+      const again = document.createElement("button");
+      again.type = "button"; again.id = "market-new"; again.className = "btn";
+      again.textContent = "Start a new market run";
+      again.onclick = () => {
+        placed = false; clientRef = newRef();
+        form.querySelectorAll("input").forEach((i) => { i.disabled = false; if (i.classList.contains("qty")) i.value = 0; });
+        dateEl.disabled = false; document.getElementById("market-name").disabled = false;
+        submit.textContent = "Pay every stall with one PayPal approval";
+        result.innerHTML = ""; again.remove(); loadAvailability();
+      };
+      submit.insertAdjacentElement("afterend", again);
+    }
   }
 
   async function loadAvailability() {
@@ -50,17 +77,25 @@
     update();
   }
 
+  // Reflect the payment result on the main button once PayPal finishes.
+  OpenStallCheckout.onMarketUpdate((b) => {
+    if (!placed) return;
+    submit.textContent = { paid: "Paid", partly_paid: "Partly paid", confirming: "Confirming payment...", closed: "Not paid" }[b.status] || "Waiting for PayPal approval";
+  });
   form.addEventListener("input", update);
   dateEl.addEventListener("change", loadAvailability);
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    errEl.textContent = ""; submit.disabled = true;
-    const body = { pickup_date: dateEl.value, buyer_name: document.getElementById("market-name").value,
+    if (placed || sending) return;
+    sending = true;
+    errEl.textContent = ""; submit.disabled = true; submit.textContent = "Creating your market run...";
+    const body = { pickup_date: dateEl.value, buyer_name: document.getElementById("market-name").value, client_ref: clientRef,
                    stalls: basket().map((s) => ({ stall_id: s.stall_id, items: s.items.map(({ item_id, quantity }) => ({ item_id, quantity })) })) };
     try {
       const res = await fetch("/api/market", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) { errEl.textContent = data.message || (data.detail && "Check your basket and try again.") || "Could not create the market run."; return; }
+      lock(data);
       result.innerHTML = "";
       const el = document.createElement("div");
       result.appendChild(el);
@@ -68,8 +103,12 @@
       el.scrollIntoView({ behavior: "smooth" });
       const btn = el.querySelector(".pay-all");
       if (btn) btn.click();  // open PayPal straight away; the user just asked to pay
-    } catch (_) { errEl.textContent = "Network error, please retry."; }
-    finally { update(); }
+    } catch (_) { errEl.textContent = "Network error, please retry. You will not be charged twice."; }
+    finally {
+      sending = false;
+      if (!placed) submit.textContent = "Pay every stall with one PayPal approval";
+      update();
+    }
   });
   loadAvailability();
 })();

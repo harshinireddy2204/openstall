@@ -222,3 +222,30 @@ def test_seller_refunds_only_their_part_of_a_market_run(client):
     other_key = db.query_one("SELECT owner_key FROM stalls WHERE id=?", (rest[0]["stall_id"],))["owner_key"]
     r = client.post(f"/api/stalls/{first['stall_id']}/orders/{rest[0]['order_id']}", json={"key": other_key, "action": "refund"})
     assert r.status_code == 403
+
+
+def test_same_basket_sent_twice_creates_one_market_run(client):
+    day, stalls = common_day()
+    body = {"pickup_date": day, "stalls": basket_for(stalls, 1), "client_ref": "basket-123"}
+    a = client.post("/api/market", json=body).json()
+    b = client.post("/api/market", json=body).json()
+    assert a["market_order_id"] == b["market_order_id"]
+    assert db.query_one("SELECT COUNT(*) AS n FROM baskets")["n"] == 1
+    assert db.query_one("SELECT COUNT(*) AS n FROM orders WHERE basket_id IS NOT NULL")["n"] == len(stalls)
+    # After paying, a resubmit shows the paid run; it never charges again.
+    approve(client, a)
+    again = client.post("/api/market", json=body).json()
+    assert again["market_order_id"] == a["market_order_id"] and again["status"] == "paid"
+    assert "paypal_approval_url" not in again
+
+
+def test_dashboard_lists_other_stalls_for_the_same_key(client, monkeypatch):
+    shared = "shared-demo-key"
+    with db.tx() as c:
+        c.execute("UPDATE stalls SET owner_key=?", (shared,))
+    page = client.get(f"/s/{NOOR}/dashboard?key={shared}").text
+    assert f"/s/{TAMALES}/dashboard?key={shared}" in page and f"/s/{PICKLE}/dashboard?key={shared}" in page
+    # A seller with their own key sees no other stalls.
+    with db.tx() as c:
+        c.execute("UPDATE stalls SET owner_key='only-noor' WHERE id=?", (NOOR,))
+    assert "Your other stalls" not in client.get(f"/s/{NOOR}/dashboard?key=only-noor").text

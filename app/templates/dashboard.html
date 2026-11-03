@@ -5,6 +5,11 @@
   <p class="eyebrow">Seller dashboard · keep this link private</p>
   <h1>{{ stall.name }}</h1>
   <p><a href="/s/{{ stall.id }}">Public stall page</a> · Listed for agents at <code>{{ settings.mcp_url }}</code></p>
+  {% if siblings %}
+  <p class="muted">Your other stalls (same dashboard key):
+    {% for s in siblings %}<a href="/s/{{ s.id }}/dashboard?key={{ key|urlencode }}">{{ s.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+    <br>Market run orders are split by seller: each stall sees and fulfils only its own part, and refunds only its own part.</p>
+  {% endif %}
   <p><a class="btn primary" href="/s/{{ stall.id }}/insights?key={{ key|urlencode }}">Open Insights</a>
      <span class="muted">Sales, AI agent share, demand you missed, and an assistant that can answer questions about your shop.</span></p>
 </section>
@@ -21,7 +26,7 @@
         <td><a href="/order/{{ o.order_id }}">{{ o.order_id }}</a></td>
         <td>{% for l in o.lines %}{{ l.quantity }} × {{ l.name }}<br>{% endfor %}</td>
         <td>{{ o.total }}</td>
-        <td><span class="pill">{{ "AI agent" if o.channel == "agent" else o.channel }}</span>{% if o.market_order_id %}<br><span class="pill" title="Bought together with other stalls in one PayPal payment">Market run</span>{% endif %}</td>
+        <td><span class="pill">{{ "AI agent" if o.channel == "agent" else o.channel }}</span>{% if o.market_order_id %}<br><span class="pill" title="Bought together with other stalls in one PayPal payment. {{ o.market_order_id }}">Market run</span>{% endif %}</td>
         <td>{{ o.status_label }}</td>
         <td class="actions">
           {% if o.status == "needs_attention" %}<button class="btn small danger" data-action="refund" data-order="{{ o.order_id }}">Retry refund</button>{% endif %}

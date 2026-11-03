@@ -21,6 +21,10 @@ from .rules import RuleViolation
 from . import service
 
 MAX_STALLS = 5
+
+
+class _Duplicate(Exception):
+    """Raised inside the transaction so it rolls back when this basket was already placed."""
 PAID_LIKE = ("paid", "ready", "picked_up", "shipped")
 
 
@@ -45,8 +49,17 @@ def place_basket(
     buyer_name: str = "",
     note: str = "",
     channel: str = "web",
+    client_ref: str | None = None,
 ) -> dict[str, Any]:
-    """stalls: [{stall_id, items: [{item_id, quantity}], pickup_window?}]."""
+    """stalls: [{stall_id, items: [{item_id, quantity}], pickup_window?}].
+
+    client_ref: an id the buyer's page makes once per basket. Sending the same basket twice
+    (double click, back button, flaky network) returns the first market run instead of a new one."""
+    client_ref = (client_ref or "").strip()[:64] or None
+    if client_ref:
+        existing = query_one("SELECT id FROM baskets WHERE client_ref=?", (client_ref,))
+        if existing:
+            return basket_view(existing["id"])
     if not isinstance(stalls, list) or not stalls:
         raise RuleViolation("empty_market_order", "Add items from at least one stall.")
     merged: dict[str, dict[str, Any]] = {}
@@ -72,15 +85,20 @@ def place_basket(
     service._expire_stale_holds()
     basket_id = "MK-" + uuid.uuid4().hex[:10].upper()
     order_ids = [service.new_order_id() for _ in prepared]
-    with tx() as c:  # all holds or none
-        c.execute("INSERT INTO baskets (id, pickup_date, mode, channel, created_at) VALUES (?,?,?,?,?)",
-                  (basket_id, prepared[0][1].isoformat(), "single", channel, now_iso()))
-        for oid, (stall, d, window, priced, total) in zip(order_ids, prepared):
-            try:
-                service.hold_order(c, oid, stall, d, window, priced, total, buyer_name=buyer_name, note=note,
-                                   channel=channel, basket_id=basket_id)
-            except RuleViolation as e:
-                raise _for_stall(e, stall["id"])
+    try:
+        with tx() as c:  # all holds or none
+            if client_ref and c.execute("SELECT 1 FROM baskets WHERE client_ref=?", (client_ref,)).fetchone():
+                raise _Duplicate()
+            c.execute("INSERT INTO baskets (id, pickup_date, mode, channel, created_at, client_ref) VALUES (?,?,?,?,?,?)",
+                      (basket_id, prepared[0][1].isoformat(), "single", channel, now_iso(), client_ref))
+            for oid, (stall, d, window, priced, total) in zip(order_ids, prepared):
+                try:
+                    service.hold_order(c, oid, stall, d, window, priced, total, buyer_name=buyer_name, note=note,
+                                       channel=channel, basket_id=basket_id)
+                except RuleViolation as e:
+                    raise _for_stall(e, stall["id"])
+    except _Duplicate:  # the same basket arrived twice at the same moment: the first one wins
+        return basket_view(query_one("SELECT id FROM baskets WHERE client_ref=?", (client_ref,))["id"])
 
     mode = "single" if settings.market_checkout != "split" and len(prepared) > 1 else "split"
     if mode == "single":

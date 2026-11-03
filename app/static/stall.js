@@ -20,7 +20,10 @@ form.addEventListener("submit", async (e) => {
   status.textContent = "";
   const items = [...form.querySelectorAll(".qty")].map((i) => ({ item_id: +i.dataset.item, quantity: +i.value })).filter((l) => l.quantity > 0);
   if (!items.length) { status.textContent = "Choose at least one item."; return; }
-  const btn = form.querySelector("button"); btn.disabled = true;
+  const btn = form.querySelector("button");
+  if (btn.disabled) return;
+  const btnLabel = btn.dataset.label || (btn.dataset.label = btn.textContent);
+  btn.disabled = true;
   try {
     const res = await fetch(`/api/stalls/${stallId}/orders`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -33,6 +36,18 @@ form.addEventListener("submit", async (e) => {
     const el = OpenStallCheckout.card(d);
     box.appendChild(el);
     OpenStallCheckout.pay(d.paypal_approval_url, d.order_id, el);
-    btn.disabled = false;
+    // Lock this order: paying again happens on the card below, not by placing a second order.
+    form.querySelectorAll("input").forEach((i) => { i.disabled = true; });
+    btn.textContent = "Order placed";
+    if (!document.getElementById("order-new")) {
+      const again = document.createElement("button");
+      again.type = "button"; again.id = "order-new"; again.className = "btn";
+      again.textContent = "Order something else";
+      again.onclick = () => {
+        form.querySelectorAll("input").forEach((i) => { i.disabled = false; if (i.classList.contains("qty")) i.value = 0; });
+        btn.disabled = false; btn.textContent = btnLabel; box.innerHTML = ""; box.classList.add("hidden"); again.remove();
+      };
+      btn.insertAdjacentElement("afterend", again);
+    }
   } catch (err) { status.textContent = err.message; btn.disabled = false; }
 });

@@ -5,6 +5,7 @@ const OpenStallCheckout = (() => {
   const KEY = "openstall_orders";
   const LIVE = ["paid", "ready", "shipped", "payment_review", "capturing"];
   const watchers = {};
+  const marketListeners = [];
   function remembered() { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (_) { return []; } }
   function remember(id) {
     try { const ids = remembered().filter((x) => x !== id); ids.unshift(id); localStorage.setItem(KEY, JSON.stringify(ids.slice(0, 50))); } catch (_) {}
@@ -119,6 +120,7 @@ const OpenStallCheckout = (() => {
     }
     const btn = el.querySelector(".pay-all");
     if (btn) btn.onclick = () => payMarket(basket, el);
+    marketListeners.forEach((fn) => { try { fn(basket); } catch (_) {} });
     return el;
   }
 
@@ -157,5 +159,6 @@ const OpenStallCheckout = (() => {
     }, 2500);
   }
 
-  return { card, pay, refresh, track, remember, remembered, marketCard, refreshMarket };
+  const onMarketUpdate = (fn) => marketListeners.push(fn);
+  return { card, pay, refresh, track, remember, remembered, marketCard, refreshMarket, onMarketUpdate };
 })();

@@ -143,6 +143,10 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "basket_id" not in cols:
         c.execute("ALTER TABLE orders ADD COLUMN basket_id TEXT")
     c.execute("CREATE INDEX IF NOT EXISTS idx_orders_basket ON orders(basket_id)")
+    bcols = {r[1] for r in c.execute("PRAGMA table_info(baskets)")}
+    if "client_ref" not in bcols:
+        c.execute("ALTER TABLE baskets ADD COLUMN client_ref TEXT")
+    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_baskets_client_ref ON baskets(client_ref) WHERE client_ref IS NOT NULL")
 
 
 def reset_connection() -> None:

@@ -2,7 +2,7 @@
 
 **Agent-ready shops for sellers without a website.** Snap a photo of your menu and AI shopping agents can find you, order, and pay with PayPal.
 
-**Live demo: https://openstall.onrender.com** (free hosting: the first load may take up to a minute)
+**Live demo: https://openstall-production.up.railway.app** · MCP endpoint: `https://openstall-production.up.railway.app/agent/mcp`
 
 Built for the [PayPal AI Hackathon 2026](https://paypalaihackathon.devpost.com/). PayPal sandbox only; no real money moves.
 
@@ -44,7 +44,7 @@ AI-referred retail traffic grew 393% year over year in Q1 2026 (Adobe). Shopify 
 - The front end lives in `studio/` and is bundled with esbuild into `app/static/studio/insights.js`, which is committed, so the Python deploy needs no Node. To rebuild: `cd studio && npm install && npm run build`.
 - `AG_STUDIO_LICENSE_KEY` removes the trial watermark. It is read from the environment, never committed.
 
-## Payment safety design (the part we are proudest of)
+## Payment safety design (the part I am proudest of)
 
 The model proposes, deterministic code decides, PayPal settles.
 

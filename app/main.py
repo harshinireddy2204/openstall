@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -176,8 +177,12 @@ def dashboard(request: Request, stall_id: str, key: str = ""):
     orders = service.list_orders(stall_id)
     invoices = query("SELECT * FROM invoices WHERE stall_id=? ORDER BY created_at DESC", (stall_id,))
     events = query("SELECT * FROM events WHERE stall_id=? ORDER BY id DESC LIMIT 25", (stall_id,))
+    # Someone running several stalls with one key (like the demo stalls) can switch between them.
+    siblings = [s for s in query("SELECT id, name, owner_key FROM stalls ORDER BY created_at")
+                if s["id"] != stall_id and secrets.compare_digest(s["owner_key"], key)]
     return templates.TemplateResponse(
-        request, "dashboard.html", {"stall": stall, "orders": orders, "invoices": invoices, "events": events, "key": key}
+        request, "dashboard.html", {"stall": stall, "orders": orders, "invoices": invoices, "events": events, "key": key,
+                                    "siblings": [{"id": s["id"], "name": s["name"]} for s in siblings]}
     )
 
 
@@ -376,12 +381,13 @@ class MarketIn(BaseModel):
     stalls: list[MarketStallIn] = Field(min_length=1, max_length=market.MAX_STALLS)
     buyer_name: str = ""
     note: str = ""
+    client_ref: str | None = Field(default=None, max_length=64)  # one per basket, makes resubmits safe
 
 
 @app.post("/api/market")
 def api_place_market(body: MarketIn):
     return market.place_basket([s.model_dump() for s in body.stalls], body.pickup_date,
-                               buyer_name=body.buyer_name, note=body.note, channel="web")
+                               buyer_name=body.buyer_name, note=body.note, channel="web", client_ref=body.client_ref)
 
 
 @app.get("/api/market/{market_order_id}")
