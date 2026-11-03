@@ -63,16 +63,34 @@ class CreatedOrder:
     status: str
 
 
-def capture_from_order(order: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract {status, capture_id, amount_cents, currency} from an order payload, if captured."""
+def _parse_capture(c: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": c["status"],  # COMPLETED, PENDING, DECLINED...
+        "capture_id": c["id"],
+        "amount_cents": to_cents(c["amount"]["value"]),
+        "currency": c["amount"].get("currency_code", settings.currency),
+    }
+
+
+def captures_by_reference(order: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """reference_id -> parsed capture, for every purchase unit that has one (multi-seller orders)."""
+    out: dict[str, dict[str, Any]] = {}
+    for pu in (order or {}).get("purchase_units") or []:
+        try:
+            out[pu.get("reference_id") or ""] = _parse_capture(pu["payments"]["captures"][0])
+        except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
+            continue
+    return out
+
+
+def capture_from_order(order: dict[str, Any], reference_id: str | None = None) -> dict[str, Any] | None:
+    """Extract {status, capture_id, amount_cents, currency} from an order payload, if captured.
+    With reference_id, only that purchase unit counts (a market order pays several sellers)."""
+    units = (order or {}).get("purchase_units") or []
+    if reference_id and len(units) > 1:
+        return captures_by_reference(order).get(reference_id)
     try:
-        c = order["purchase_units"][0]["payments"]["captures"][0]
-        return {
-            "status": c["status"],  # COMPLETED, PENDING, DECLINED...
-            "capture_id": c["id"],
-            "amount_cents": to_cents(c["amount"]["value"]),
-            "currency": c["amount"].get("currency_code", settings.currency),
-        }
+        return _parse_capture(units[0]["payments"]["captures"][0])
     except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
         return None
 
@@ -174,28 +192,7 @@ class PayPalClient:
             self._mock_orders[oid] = {"status": "CREATED", "reference_id": reference_id, "total_cents": total_cents}
             return CreatedOrder(oid, f"{settings.base_url}/mock-paypal/approve?token={oid}", "CREATED")
 
-        purchase_unit: dict[str, Any] = {
-            "reference_id": reference_id,
-            "custom_id": reference_id,
-            "description": description[:127],
-            "amount": {
-                **money(total_cents),
-                "breakdown": {"item_total": money(total_cents)},
-            },
-            "items": [
-                {
-                    "name": line["name"][:127],
-                    "quantity": str(line["quantity"]),
-                    "unit_amount": money(line["unit_cents"]),
-                    "category": "PHYSICAL_GOODS",
-                }
-                for line in lines
-            ],
-        }
-        if payee_email:
-            # The seller is the payee / merchant of record.
-            purchase_unit["payee"] = {"email_address": payee_email}
-
+        purchase_unit = self._purchase_unit(reference_id, lines, total_cents, description, payee_email)
         body = {
             "intent": "CAPTURE",
             "purchase_units": [purchase_unit],
@@ -220,11 +217,93 @@ class PayPalClient:
             raise PayPalError("PayPal did not return a valid buyer approval link", details=data)
         return CreatedOrder(data["id"], approve, data.get("status", "CREATED"))
 
+    @staticmethod
+    def _purchase_unit(reference_id: str, lines: list[dict[str, Any]], total_cents: int, description: str,
+                       payee_email: str | None) -> dict[str, Any]:
+        unit: dict[str, Any] = {
+            "reference_id": reference_id,
+            "custom_id": reference_id,
+            "description": description[:127],
+            "amount": {**money(total_cents), "breakdown": {"item_total": money(total_cents)}},
+            "items": [
+                {"name": line["name"][:127], "quantity": str(line["quantity"]),
+                 "unit_amount": money(line["unit_cents"]), "category": "PHYSICAL_GOODS"}
+                for line in lines
+            ],
+        }
+        if payee_email:
+            # The seller is the payee / merchant of record.
+            unit["payee"] = {"email_address": payee_email}
+        return unit
+
+    def create_multi_order(
+        self,
+        *,
+        request_key: str,
+        units: list[dict[str, Any]],
+        brand_name: str,
+        return_url: str,
+        cancel_url: str,
+    ) -> CreatedOrder:
+        """One buyer approval that pays several sellers: one purchase unit per seller (max 10).
+        units: [{reference_id, lines, total_cents, description, payee_email}]."""
+        if not 1 <= len(units) <= 10:
+            raise PayPalError("A PayPal order holds 1 to 10 purchase units")
+        if not self.live:
+            oid = "MOCK-" + uuid.uuid4().hex[:12].upper()
+            self._mock_orders[oid] = {"status": "CREATED", "reference_id": units[0]["reference_id"],
+                                      "total_cents": sum(u["total_cents"] for u in units),
+                                      "units": [{"reference_id": u["reference_id"], "total_cents": u["total_cents"]} for u in units]}
+            return CreatedOrder(oid, f"{settings.base_url}/mock-paypal/approve?token={oid}", "CREATED")
+        body = {
+            "intent": "CAPTURE",
+            "purchase_units": [self._purchase_unit(u["reference_id"], u["lines"], u["total_cents"], u["description"],
+                                                   u.get("payee_email")) for u in units],
+            "payment_source": {"paypal": {"experience_context": {
+                "brand_name": brand_name[:127], "user_action": "PAY_NOW", "shipping_preference": "NO_SHIPPING",
+                "return_url": return_url, "cancel_url": cancel_url,
+            }}},
+        }
+        data = self._request("POST", "/v2/checkout/orders", json=body, request_id=f"create-{request_key}")
+        approve = next((l["href"] for l in data.get("links", []) if l.get("rel") in ("payer-action", "approve")), None)
+        if not approve or not is_paypal_checkout_url(approve):
+            raise PayPalError("PayPal did not return a valid buyer approval link", details=data)
+        return CreatedOrder(data["id"], approve, data.get("status", "CREATED"))
+
+    def capture_order_all(self, paypal_order_id: str) -> dict[str, dict[str, Any]]:
+        """Capture every purchase unit of an approved order. Returns reference_id -> capture.
+        PayPal answers 207 when only some units were captured; missing units simply aren't in the result."""
+        if not self.live:
+            o = self._mock_orders.get(paypal_order_id)
+            if not o:
+                raise PayPalError("Unknown order", 404)
+            if o["status"] == "COMPLETED":
+                raise PayPalError("Order already captured", 422, details={"details": [{"issue": "ORDER_ALREADY_CAPTURED"}]})
+            if o["status"] != "APPROVED":
+                raise PayPalError("Order not approved by payer", 422, details={"issue": "ORDER_NOT_APPROVED"})
+            o["status"] = "COMPLETED"
+            o["captures"] = {u["reference_id"]: "MOCKCAP-" + uuid.uuid4().hex[:10].upper()
+                             for u in o.get("units") or [{"reference_id": o["reference_id"]}]}
+            return captures_by_reference(self.get_order(paypal_order_id))
+        data = self._request("POST", f"/v2/checkout/orders/{paypal_order_id}/capture", json={},
+                             request_id=f"capture-{paypal_order_id}")
+        caps = captures_by_reference(data)
+        if not caps:
+            raise PayPalError("Capture response had no capture", details=data)
+        return caps
+
     def get_order(self, paypal_order_id: str) -> dict[str, Any]:
         if not self.live:
             o = self._mock_orders.get(paypal_order_id, {"status": "UNKNOWN"})
             out: dict[str, Any] = {"id": paypal_order_id, "status": o["status"]}
-            if o.get("capture_id"):
+            if o.get("units"):
+                out["purchase_units"] = [
+                    {"reference_id": u["reference_id"], **({"payments": {"captures": [{
+                        "id": o["captures"][u["reference_id"]], "status": "COMPLETED", "amount": money(u["total_cents"]),
+                    }]}} if o.get("captures", {}).get(u["reference_id"]) else {})}
+                    for u in o["units"]
+                ]
+            elif o.get("capture_id"):
                 out["purchase_units"] = [{"payments": {"captures": [{
                     "id": o["capture_id"], "status": "COMPLETED",
                     "amount": money(o["total_cents"]),

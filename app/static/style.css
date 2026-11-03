@@ -39,7 +39,7 @@ footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 24
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 16px 0; }
 .stall-card { color: var(--ink); text-decoration: none; margin: 0; transition: transform .15s; }
 .stall-card:hover { transform: translateY(-2px); }
-.tag, .pill { display: inline-block; font-size: .75rem; padding: 2px 10px; border-radius: 999px; background: #fdebd3; color: #8a3a0b; margin: 2px 4px 2px 0; }
+.tag, .pill { display: inline-block; white-space: nowrap; font-size: .75rem; padding: 2px 10px; border-radius: 999px; background: #fdebd3; color: #8a3a0b; margin: 2px 4px 2px 0; }
 .muted { color: var(--muted); font-size: .92rem; }
 .narrow { max-width: 760px; }
 label { display: block; font-weight: 500; margin: 10px 0; }
@@ -133,3 +133,17 @@ th { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: 
 .os-demand { border-top: 1px solid var(--line); padding: 8px 0; }
 .os-pill { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 99px; background: #fdf0e3; color: var(--accent); font-size: .78rem; }
 @media (max-width: 640px) { .os-row { grid-template-columns: 1fr; } .os-num { text-align: left; } }
+
+/* ---------- Market run ---------- */
+.market-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.market-stall { margin: 0; }
+.market-stall h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.market-stall.closed { opacity: .55; }
+.market-stall .qty { width: 72px; }
+.market-bar { position: sticky; bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  box-shadow: 0 6px 24px rgba(31, 27, 22, .12); z-index: 5; }
+.market-date { max-width: 520px; }
+.market-card { background: var(--card); border: 2px solid var(--stripe); border-radius: 16px; padding: 16px; margin: 12px 0; max-width: 560px; white-space: normal; }
+.market-card .pay-all { margin: 6px 0 4px; }
+.market-orders .order-card { max-width: none; margin: 10px 0; }
+#market-result .market-card, .narrow .market-card { max-width: none; }

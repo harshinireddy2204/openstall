@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Market run {{ basket.market_order_id }} · OpenStall{% endblock %}
+{% block scripts %}
+<script src="/static/checkout.js"></script>
+<script>
+  (async () => {
+    const box = document.getElementById("market-live");
+    const el = document.createElement("div");
+    box.appendChild(el);
+    await OpenStallCheckout.refreshMarket(box.dataset.market, el, false);
+  })();
+  if (window.opener && !window.opener.closed) {
+    try { window.opener.postMessage({ type: "openstall-market", market_order_id: {{ basket.market_order_id|tojson }} }, location.origin); } catch (e) {}
+    document.body.insertAdjacentHTML("afterbegin", '<div class="banner">Payment step finished. You can close this window.</div>');
+    setTimeout(() => window.close(), 800);
+  }
+</script>
+{% endblock %}
+{% block content %}
+<section class="narrow">
+  <p class="eyebrow">Market run {{ basket.market_order_id }}</p>
+  {% if error %}<p class="notice">{{ error }}</p>{% endif %}
+  <div id="market-live" data-market="{{ basket.market_order_id }}"></div>
+  <p><a href="/orders">All my orders</a> · <a href="/market">Start another market run</a></p>
+</section>
+{% endblock %}

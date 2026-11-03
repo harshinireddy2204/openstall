@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import ai, buyer_agent, insights, service
+from . import ai, buyer_agent, insights, market, service
 from .config import ROOT, settings
 from .db import log_event, now_iso, query, query_one, tx
 from .mcp_server import build_app, mcp
@@ -75,6 +75,7 @@ app.add_middleware(GZipMiddleware, minimum_size=2048)  # the Insights bundle is 
 # (path prefix, method, max requests, window seconds). In-memory, per client IP: fine for one instance.
 RATE_LIMITS = [
     ("/api/stalls", "POST", 30, 600),        # stall creation + order creation + seller actions
+    ("/api/market", "POST", 60, 600),        # market runs (creation + confirm polling)
     ("/api/agent/chat", "POST", 20, 60),
     ("/api/catalog/extract", "POST", 10, 600),
     ("/agent/mcp", "POST", 120, 60),
@@ -214,13 +215,31 @@ def order_page(request: Request, order_id: str, error: str = ""):
     return templates.TemplateResponse(request, "order.html", {"order": order, "error": error})
 
 
+@app.get("/market", response_class=HTMLResponse)
+def market_builder(request: Request):
+    stalls = [service.get_stall(s["id"]) for s in query("SELECT id FROM stalls ORDER BY created_at")]
+    return templates.TemplateResponse(request, "market.html", {"stalls": stalls})
+
+
+@app.get("/market/{market_order_id}", response_class=HTMLResponse)
+def market_page(request: Request, market_order_id: str, error: str = ""):
+    try:
+        basket = market.basket_view(market_order_id)
+    except RuleViolation:
+        raise HTTPException(404, "Market order not found")
+    return templates.TemplateResponse(request, "market_order.html", {"basket": basket, "error": error})
+
+
 @app.get("/llms.txt", response_class=PlainTextResponse)
 def llms_txt():
     return (
         "# OpenStall\n\n"
         "> Independent local sellers (home bakers, market stalls, makers) made buyable by AI agents. Payments via PayPal.\n\n"
         f"MCP endpoint (streamable HTTP): {settings.mcp_url}\n"
-        "Tools: find_stalls, get_menu, check_availability, place_order, get_order_status, request_custom_order, get_custom_order_status\n"
+        "Tools: find_stalls, get_menu, check_availability, place_order, place_market_order, get_order_status, "
+        "get_market_order_status, request_custom_order, get_custom_order_status\n"
+        "Market runs: place_market_order buys from up to 5 stalls for one pickup day with ONE PayPal approval; "
+        "each seller is paid directly.\n"
         "Orders return a PayPal approval link that the human buyer must approve. Agents never handle payment credentials.\n"
     )
 
@@ -345,6 +364,36 @@ async def api_studio_llm(request: Request, stall: str = "", key: str = ""):
     return await run_in_threadpool(insights.run_studio_turn, body)
 
 
+# ------------------------------------------------------------------ market runs
+class MarketStallIn(BaseModel):
+    stall_id: str
+    items: list[dict[str, Any]] = Field(min_length=1, max_length=50)
+    pickup_window: str | None = None
+
+
+class MarketIn(BaseModel):
+    pickup_date: str
+    stalls: list[MarketStallIn] = Field(min_length=1, max_length=market.MAX_STALLS)
+    buyer_name: str = ""
+    note: str = ""
+
+
+@app.post("/api/market")
+def api_place_market(body: MarketIn):
+    return market.place_basket([s.model_dump() for s in body.stalls], body.pickup_date,
+                               buyer_name=body.buyer_name, note=body.note, channel="web")
+
+
+@app.get("/api/market/{market_order_id}")
+def api_market(market_order_id: str):
+    return market.basket_view(market_order_id)
+
+
+@app.post("/api/market/{market_order_id}/confirm")
+def api_market_confirm(market_order_id: str):
+    return market.confirm_basket(market_order_id)
+
+
 # ------------------------------------------------------------------ buyer API
 class OrderIn(BaseModel):
     items: list[dict[str, Any]]
@@ -397,7 +446,7 @@ def paypal_return(order: str, token: str = ""):
     if token and o["paypal_order_id"] and token != o["paypal_order_id"]:
         raise HTTPException(400, "PayPal token does not match this order")
     result = service.complete_payment(order)
-    url = f"/order/{order}"
+    url = f"/market/{o['basket_id']}" if o.get("basket_id") and market.is_single(o["basket_id"]) else f"/order/{order}"
     if result.get("error"):
         url += "?error=" + result["error"].replace(" ", "+")
     return RedirectResponse(url, status_code=303)
@@ -409,7 +458,9 @@ def paypal_cancel(order: str):
         service.cancel_order(order)
     except RuleViolation:
         raise HTTPException(404, "Order not found")
-    return RedirectResponse(f"/order/{order}?error=Payment+cancelled.+No+money+was+taken.", status_code=303)
+    o = service.get_order(order)
+    base = f"/market/{o['basket_id']}" if o and o.get("basket_id") and market.is_single(o["basket_id"]) else f"/order/{order}"
+    return RedirectResponse(f"{base}?error=Payment+cancelled.+No+money+was+taken.", status_code=303)
 
 
 @app.post("/webhooks/paypal")
@@ -453,7 +504,12 @@ def mock_approve_page(request: Request, token: str):
     o = query_one("SELECT * FROM orders WHERE paypal_order_id=?", (token,))
     if paypal.live or not o:
         raise HTTPException(404)
-    return templates.TemplateResponse(request, "mock_paypal.html", {"order": service.order_view(o["id"]), "token": token})
+    view = service.order_view(o["id"])
+    if o.get("basket_id") and market.is_single(o["basket_id"]):
+        b = market.basket_view(o["basket_id"])  # one approval pays every stall in the market run
+        view = {**view, "total": b["total"], "stall_name": ", ".join(x["stall_name"] for x in b["orders"]),
+                "lines": [{**l, "name": f"{l['name']} ({x['stall_name']})"} for x in b["orders"] for l in x["lines"]]}
+    return templates.TemplateResponse(request, "mock_paypal.html", {"order": view, "token": token})
 
 
 @app.post("/mock-paypal/approve")

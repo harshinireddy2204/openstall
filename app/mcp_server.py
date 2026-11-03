@@ -14,6 +14,7 @@ from .config import settings
 INSTRUCTIONS = (
     "OpenStall lists independent local sellers (home bakers, market stalls, makers) who have no website. "
     "Typical flow: find_stalls -> get_menu -> check_availability -> place_order. "
+    "To buy from several stalls for the same day, use place_market_order: one PayPal approval pays every seller. "
     "place_order returns a PayPal approval link: give exactly that link to the human, who approves and pays in PayPal. "
     "Never invent or edit PayPal URLs (API endpoints such as /v2/checkout/orders/.../capture are server-only). "
     "Never tell the human an order is paid until get_order_status returns status 'paid'. "

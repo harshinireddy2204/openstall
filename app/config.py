@@ -48,6 +48,9 @@ class Settings:
     hold_minutes: int = field(default_factory=lambda: int(_env("HOLD_MINUTES", "30")))
     max_items_per_order: int = field(default_factory=lambda: int(_env("MAX_ITEMS_PER_ORDER", "200")))
     max_order_cents: int = field(default_factory=lambda: int(_env("MAX_ORDER_CENTS", "100000")))
+    # Market runs (one basket across several stalls): "single" = one PayPal approval with one purchase unit
+    # per seller; "split" = one checkout per seller. "single" falls back to "split" if PayPal refuses it.
+    market_checkout: str = field(default_factory=lambda: _env("MARKET_CHECKOUT", "single").lower())
     default_timezone: str = field(default_factory=lambda: _env("DEFAULT_TIMEZONE", "America/New_York"))
 
     @property

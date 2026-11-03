@@ -15,7 +15,8 @@ AI-referred retail traffic grew 393% year over year in Q1 2026 (Adobe). Shopify 
 1. **Snap.** The seller uploads a menu photo (or types it). Claude extracts a structured catalog: items, prices, allergens, daily capacity, pickup windows, lead time. The seller reviews it.
 2. **List.** The stall is published to the OpenStall **MCP server**, plus a public page with schema.org JSON-LD and `/llms.txt`.
 3. **Get paid.** Any agent can `find_stalls`, `get_menu`, `check_availability` and `place_order`. Each order is a **PayPal Orders v2** checkout. The human approves in PayPal; the agent never touches credentials.
-4. **Learn.** Seller **Insights**, built on **AG Studio**, shows how much revenue AI agents bring, the agent funnel (viewed menu, checked availability, started PayPal checkout, paid), a pickup board for the next 7 days, and a **demand radar**: what agents asked for that the seller could not sell (sold out, no pickup that day, too little notice). A Claude-powered Studio assistant answers plain-language questions, builds charts, and can raise an item's daily capacity after the seller confirms.
+4. **Market runs.** A buyer (or their agent, via `place_market_order`) fills one basket from up to 5 stalls for the same pickup day and approves **one PayPal payment**. It is one Orders v2 order with one purchase unit per seller, so every seller is paid directly and keeps its own order, capacity, pickup window and refunds. Holds are all or nothing; a stall that sells out before capture is refunded alone while the rest stay paid. If PayPal refuses a multi-seller order, OpenStall falls back to one checkout per stall.
+5. **Learn.** Seller **Insights**, built on **AG Studio**, shows how much revenue AI agents bring, the agent funnel (viewed menu, checked availability, started PayPal checkout, paid), a pickup board for the next 7 days, and a **demand radar**: what agents asked for that the seller could not sell (sold out, no pickup that day, too little notice). A Claude-powered Studio assistant answers plain-language questions, builds charts, and can raise an item's daily capacity after the seller confirms.
 
 ## How PayPal is used
 
@@ -26,6 +27,7 @@ AI-referred retail traffic grew 393% year over year in Q1 2026 (Adobe). Shopify 
 | **Payments v2** refunds (amount/currency mismatch, closed orders, seller refunds) | `service.py` |
 | **Webhooks** with signature verification: `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED/PENDING/DENIED/REFUNDED/REVERSED`, `CUSTOMER.DISPUTE.*` | `/webhooks/paypal` |
 | **Invoicing v2** with partial payment (deposit) for custom orders, priced by the seller | `send_custom_quote` |
+| **Orders v2 multiple purchase units**: one buyer approval, one capture, a separate capture per seller (handles HTTP 207 partial capture) | `app/market.py` |
 | **Order tracking** (`/v2/checkout/orders/{id}/track`) for shipped goods | seller dashboard |
 
 ## How AI is used

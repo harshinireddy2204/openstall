@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from typing import Any, Callable
 
-from . import insights, service
+from . import insights, market, service
 from .rules import RuleViolation
 
 
@@ -94,6 +94,39 @@ def place_order(
 
 
 @_safe
+def place_market_order(
+    pickup_date: str,
+    stalls: list[dict[str, Any]],
+    buyer_name: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Buy from SEVERAL stalls for the same pickup date with ONE PayPal approval (a market run).
+
+    stalls: [{"stall_id": "...", "items": [{"item_id": 3, "quantity": 2}], "pickup_window": "09:00-12:00" (optional)}]
+    Up to 5 stalls. Each seller is paid directly and keeps its own order, pickup window and refunds.
+    All or nothing: if any stall can't fill its part, nothing is held; the error names that stall.
+    Returns market_order_id and paypal_approval_url for the HUMAN to approve once.
+    """
+    try:
+        basket = market.place_basket(stalls, pickup_date, buyer_name=buyer_name, note=note, channel="agent")
+    except RuleViolation as e:
+        sid = getattr(e, "stall_id", None)
+        if sid and e.code in ("over_capacity", "no_pickup_that_day", "lead_time"):
+            part = next((p for p in stalls if isinstance(p, dict) and p.get("stall_id") == sid), {})
+            insights.record_unmet(sid, e.code, pickup_date, part.get("items") or [])
+        raise
+    for o in basket["orders"]:
+        insights.record_agent_activity(o["stall_id"], "3. Started PayPal checkout")
+    return basket
+
+
+@_safe
+def get_market_order_status(market_order_id: str) -> dict[str, Any]:
+    """Status of a market run and of each stall's order inside it. Captures payment if the human has approved."""
+    return market.confirm_basket(market_order_id)
+
+
+@_safe
 def get_order_status(order_id: str) -> dict[str, Any]:
     """Get the status of an order (pending_payment, paid, ready, picked_up, shipped, refunded, expired)."""
     return service.order_view(order_id)
@@ -119,7 +152,8 @@ def get_custom_order_status(custom_order_id: str) -> dict[str, Any]:
 
 
 TOOLS: list[Callable[..., Any]] = [
-    find_stalls, get_menu, check_availability, place_order, get_order_status, request_custom_order, get_custom_order_status,
+    find_stalls, get_menu, check_availability, place_order, place_market_order, get_order_status, get_market_order_status,
+    request_custom_order, get_custom_order_status,
 ]
 
 # JSON schemas for the Claude tool-use buyer agent (the MCP server derives its own from signatures).
@@ -173,6 +207,43 @@ SCHEMAS: list[dict[str, Any]] = [
             },
             "required": ["stall_id", "items", "pickup_date"],
         },
+    },
+    {
+        "name": "place_market_order",
+        "description": place_market_order.__doc__,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pickup_date": {"type": "string"},
+                "stalls": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "stall_id": {"type": "string"},
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"item_id": {"type": "integer"}, "quantity": {"type": "integer"}},
+                                    "required": ["item_id", "quantity"],
+                                },
+                            },
+                            "pickup_window": {"type": "string"},
+                        },
+                        "required": ["stall_id", "items"],
+                    },
+                },
+                "buyer_name": {"type": "string"},
+                "note": {"type": "string"},
+            },
+            "required": ["pickup_date", "stalls"],
+        },
+    },
+    {
+        "name": "get_market_order_status",
+        "description": get_market_order_status.__doc__,
+        "input_schema": {"type": "object", "properties": {"market_order_id": {"type": "string"}}, "required": ["market_order_id"]},
     },
     {
         "name": "get_order_status",

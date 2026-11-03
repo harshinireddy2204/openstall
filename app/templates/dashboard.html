@@ -21,7 +21,7 @@
         <td><a href="/order/{{ o.order_id }}">{{ o.order_id }}</a></td>
         <td>{% for l in o.lines %}{{ l.quantity }} × {{ l.name }}<br>{% endfor %}</td>
         <td>{{ o.total }}</td>
-        <td><span class="pill">{{ "AI agent" if o.channel == "agent" else o.channel }}</span></td>
+        <td><span class="pill">{{ "AI agent" if o.channel == "agent" else o.channel }}</span>{% if o.market_order_id %}<br><span class="pill" title="Bought together with other stalls in one PayPal payment">Market run</span>{% endif %}</td>
         <td>{{ o.status_label }}</td>
         <td class="actions">
           {% if o.status == "needs_attention" %}<button class="btn small danger" data-action="refund" data-order="{{ o.order_id }}">Retry refund</button>{% endif %}

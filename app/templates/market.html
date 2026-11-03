@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Market run · OpenStall{% endblock %}
+{% block content %}
+<section>
+  <p class="eyebrow">Market run</p>
+  <h1>Shop several stalls. <em>Pay once.</em></h1>
+  <p class="lead">Pick a pickup day and fill one basket from any stalls. You approve one PayPal payment, and each seller is paid directly
+    with their own order, pickup window and refunds.</p>
+  <div class="row market-date">
+    <label>Pickup date <input type="date" id="market-date" required></label>
+    <label>Your name <input id="market-name" maxlength="80"></label>
+  </div>
+</section>
+<form id="market-form">
+  <div class="market-grid">
+    {% for stall in stalls %}
+    <section class="card market-stall" data-stall="{{ stall.id }}">
+      <h2>{{ stall.name }}</h2>
+      <p class="muted">{{ stall.city }} · pickup {% for w in stall.pickup_windows %}{{ w.day|upper }} {{ w.start }} to {{ w.end }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+      <p class="muted avail" aria-live="polite"></p>
+      <table class="menu">
+        <tbody>
+          {% for it in stall["items"] %}
+          <tr>
+            <td><strong>{{ it.name }}</strong>{% if it.allergens %}<br><span class="muted">Contains: {{ it.allergens|join(", ") }}</span>{% endif %}
+              <br><span class="muted left" data-item="{{ it.id }}"></span></td>
+            <td>{{ fmt_money(it.price_cents) }}</td>
+            <td><input type="number" min="0" max="200" value="0" class="qty" data-item="{{ it.id }}" data-price="{{ it.price_cents }}" aria-label="Quantity of {{ it.name }}"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endfor %}
+  </div>
+  <div class="market-bar card">
+    <div><strong id="market-total">$0.00</strong> <span class="muted" id="market-summary">Nothing in your basket yet</span></div>
+    <button class="btn primary" type="submit" id="market-submit" disabled>Pay every stall with one PayPal approval</button>
+  </div>
+  <p id="market-error" class="error"></p>
+</form>
+<section id="market-result"></section>
+{% endblock %}
+{% block scripts %}<script src="/static/checkout.js"></script><script src="/static/market.js"></script>{% endblock %}

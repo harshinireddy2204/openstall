@@ -170,7 +170,7 @@ def pickup_board(stall_id: str, days: int = 7) -> list[dict[str, Any]]:
         held = reserved_quantities(stall_id, d.isoformat())
         paid = reserved_quantities(stall_id, d.isoformat(), include_pending=False)
         board.append({
-            "date": d.isoformat(), "label": d.strftime("%a %b %-d"),
+            "date": d.isoformat(), "label": f"{d.strftime('%a %b')} {d.day}",
             "windows": [rules.window_label(w) for w in windows],
             "items": [{"item_id": it["id"], "name": it["name"], "paid": paid.get(it["id"], 0),
                        "held": held.get(it["id"], 0) - paid.get(it["id"], 0), "capacity": it["daily_capacity"]}

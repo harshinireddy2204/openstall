@@ -82,6 +82,15 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     outcome TEXT,
     received_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS baskets (
+    id TEXT PRIMARY KEY,
+    pickup_date TEXT NOT NULL,
+    mode TEXT NOT NULL,              -- 'single': one PayPal approval pays every seller; 'split': one checkout per seller
+    paypal_order_id TEXT,
+    approve_url TEXT,
+    channel TEXT DEFAULT 'web',
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     stall_id TEXT,
@@ -115,8 +124,17 @@ def conn() -> sqlite3.Connection:
     if _conn is None:
         _conn = _connect()
         _conn.executescript(SCHEMA)
+        _migrate(_conn)
         _conn.commit()
     return _conn
+
+
+def _migrate(c: sqlite3.Connection) -> None:
+    """Additive column migrations for databases created by older versions."""
+    cols = {r[1] for r in c.execute("PRAGMA table_info(orders)")}
+    if "basket_id" not in cols:
+        c.execute("ALTER TABLE orders ADD COLUMN basket_id TEXT")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_orders_basket ON orders(basket_id)")
 
 
 def reset_connection() -> None:

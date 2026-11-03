@@ -217,7 +217,7 @@ def reconcile_stuck_captures(older_than_minutes: int = 5) -> int:
     fixed = 0
     for o in query("SELECT * FROM orders WHERE status='capturing' AND updated_at < ?", (cutoff,)):
         try:
-            cap = capture_from_order(paypal.get_order(o["paypal_order_id"]))
+            cap = capture_from_order(paypal.get_order(o["paypal_order_id"]), o["id"])
         except PayPalError:
             continue  # try again next time
         if cap:
@@ -307,6 +307,23 @@ def place_order(
     Returns the order plus a PayPal approval URL the HUMAN must open. Agents
     never complete payment themselves.
     """
+    stall, d, window, priced, total = prepare_order(stall_id, lines, pickup_date, pickup_window)
+    _expire_stale_holds()
+    order_id = new_order_id()
+    # Capacity check and hold insert happen in one serialized transaction.
+    with tx() as c:
+        hold_order(c, order_id, stall, d, window, priced, total, buyer_name=buyer_name, note=note, channel=channel)
+    attach_checkout(order_id, stall, d, window, priced, total)
+    log_event("order_created", stall_id=stall_id, order_id=order_id, channel=channel, total_cents=total)
+    return order_view(order_id)
+
+
+def new_order_id() -> str:
+    return "OS-" + uuid.uuid4().hex[:10].upper()
+
+
+def prepare_order(stall_id: str, lines: list[dict[str, Any]], pickup_date: str, pickup_window: str | None):
+    """Every seller rule except capacity (which needs the lock): returns stall, date, window, priced lines, total."""
     stall = get_stall(stall_id, include_secret=True)
     if not stall:
         raise RuleViolation("unknown_stall", f"No stall with id {stall_id!r}.")
@@ -317,29 +334,35 @@ def place_order(
     items_by_id = {it["id"]: it for it in stall["items"]}
     priced = rules.price_lines(items_by_id, lines, max_items=settings.max_items_per_order)
     total = rules.check_total(priced, settings.max_order_cents)
+    return stall, d, window, priced, total
 
-    _expire_stale_holds()
-    order_id = "OS-" + uuid.uuid4().hex[:10].upper()
-    # Capacity check and hold insert happen in one serialized transaction.
-    with tx() as c:
-        pending = c.execute(
-            "SELECT COUNT(*) FROM orders WHERE stall_id=? AND pickup_date=? AND status='pending_payment'",
-            (stall_id, d.isoformat()),
-        ).fetchone()[0]
-        if pending >= MAX_PENDING_PER_DAY:
-            raise RuleViolation(
-                "too_many_unpaid_orders",
-                "This stall has too many unpaid orders for that day. Please try again in a few minutes.",
-            )
-        rules.check_capacity(priced, items_by_id, reserved_quantities(stall_id, d.isoformat()))
-        ts = now_iso()
-        c.execute(
-            """INSERT INTO orders (id,stall_id,buyer_name,buyer_note,pickup_date,pickup_window,lines,subtotal_cents,
-               status,channel,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (order_id, stall_id, buyer_name[:80], note[:500], d.isoformat(), window,
-             dumps([l.as_dict() for l in priced]), total, "pending_payment", channel, ts, ts),
+
+def hold_order(c, order_id: str, stall: dict[str, Any], d: date, window: str, priced: list, total: int, *,
+               buyer_name: str = "", note: str = "", channel: str = "web", basket_id: str | None = None) -> None:
+    """Inside tx(): enforce capacity and anti-squatting, then insert the pending order (the hold)."""
+    stall_id = stall["id"]
+    pending = c.execute(
+        "SELECT COUNT(*) FROM orders WHERE stall_id=? AND pickup_date=? AND status='pending_payment'",
+        (stall_id, d.isoformat()),
+    ).fetchone()[0]
+    if pending >= MAX_PENDING_PER_DAY:
+        raise RuleViolation(
+            "too_many_unpaid_orders",
+            "This stall has too many unpaid orders for that day. Please try again in a few minutes.",
         )
+    items_by_id = {it["id"]: it for it in stall["items"]}
+    rules.check_capacity(priced, items_by_id, reserved_quantities(stall_id, d.isoformat()))
+    ts = now_iso()
+    c.execute(
+        """INSERT INTO orders (id,stall_id,buyer_name,buyer_note,pickup_date,pickup_window,lines,subtotal_cents,
+           status,channel,basket_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (order_id, stall_id, buyer_name[:80], note[:500], d.isoformat(), window,
+         dumps([l.as_dict() for l in priced]), total, "pending_payment", channel, basket_id, ts, ts),
+    )
 
+
+def attach_checkout(order_id: str, stall: dict[str, Any], d: date, window: str, priced: list, total: int) -> None:
+    """Create the PayPal order for one held order. On failure the hold is released and no money has moved."""
     try:
         created = paypal.create_order(
             reference_id=order_id,
@@ -352,21 +375,17 @@ def place_order(
             cancel_url=f"{settings.base_url}/paypal/cancel?order={order_id}",
         )
     except PayPalError as e:
-        # Release the hold so a PayPal problem never blocks capacity. No money has moved.
         _set_status(order_id, "payment_failed")
         issue = issue_of(e)
-        log_event("paypal_create_failed", stall_id=stall_id, order_id=order_id, error=str(e), issue=issue, debug_id=e.debug_id)
+        log_event("paypal_create_failed", stall_id=stall["id"], order_id=order_id, error=str(e), issue=issue, debug_id=e.debug_id)
         if issue.startswith("PAYEE_ACCOUNT"):
             raise RuleViolation("seller_cannot_receive", f"{stall['name']}'s PayPal account can't receive payments yet. No payment was taken.")
         raise RuleViolation("payment_unavailable", "PayPal is unavailable right now. No payment was taken; please retry.")
-
     with tx() as c:
         c.execute(
             "UPDATE orders SET paypal_order_id=?, approve_url=?, updated_at=? WHERE id=?",
             (created.id, created.approve_url, now_iso(), order_id),
         )
-    log_event("order_created", stall_id=stall_id, order_id=order_id, channel=channel, total_cents=total)
-    return order_view(order_id)
 
 
 def _set_status(order_id: str, status: str, **fields: Any) -> None:
@@ -398,6 +417,7 @@ def order_view(order_id: str) -> dict[str, Any]:
         "total_cents": o["subtotal_cents"],
         "channel": o["channel"],
         "tracking": o["tracking"],
+        "market_order_id": o.get("basket_id"),
     }
     view["steps"] = order_steps(o)
     if o["status"] == "pending_payment" and o["approve_url"]:
@@ -482,6 +502,10 @@ def complete_payment(order_id: str) -> dict[str, Any]:
         return {**order_view(order_id), **({"error": msg} if msg else {})}
     if not o["paypal_order_id"]:
         raise RuleViolation("no_payment", "This order has no PayPal payment attached.")
+    if o.get("basket_id"):
+        from . import market  # one PayPal approval may pay several sellers: capture them together
+        if market.is_single(o["basket_id"]):
+            return market.complete_basket(o["basket_id"], focus=order_id)
 
     # Phase 1: reserve stock against money already captured / being captured.
     stall = get_stall(o["stall_id"])
@@ -521,7 +545,7 @@ def _handle_capture_error(o: dict[str, Any], e: PayPalError) -> dict[str, Any]:
     if issue == "ORDER_ALREADY_CAPTURED" or e.status is None or (e.status or 0) >= 500:
         # Ambiguous outcome (timeout / 5xx) or a duplicate: ask PayPal what actually happened.
         try:
-            cap = capture_from_order(paypal.get_order(o["paypal_order_id"]))
+            cap = capture_from_order(paypal.get_order(o["paypal_order_id"]), order_id)
         except PayPalError:
             cap = None
         if cap:
@@ -598,6 +622,11 @@ def confirm_if_approved(order_id: str) -> dict[str, Any]:
 
 def cancel_order(order_id: str) -> dict[str, Any]:
     o = get_order(order_id)
+    if o and o.get("basket_id"):
+        from . import market
+        if market.is_single(o["basket_id"]):  # one approval covers every stall, so cancelling cancels them all
+            market.cancel_basket(o["basket_id"])
+            return order_view(order_id)
     if o and o["status"] == "pending_payment":
         _set_status(order_id, "cancelled")
         log_event("order_cancelled", stall_id=o["stall_id"], order_id=order_id)

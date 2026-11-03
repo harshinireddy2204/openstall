@@ -20,6 +20,15 @@ async function addOrderCard(orderId) {
   OpenStallCheckout.track(orderId, el);
 }
 
+async function addMarketCard(id) {
+  const res = await fetch(`/api/market/${id}`);
+  if (!res.ok) return;
+  const el = document.createElement("div");
+  el.classList.add("msg", "bot");
+  OpenStallCheckout.marketCard(await res.json(), el);
+  msgs.appendChild(el); msgs.scrollTop = msgs.scrollHeight;
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim(); if (!text) return;
@@ -38,7 +47,8 @@ form.addEventListener("submit", async (e) => {
       trace.appendChild(li);
     }
     add("bot", d.reply || "(no reply)");
-    if (d.order_id) await addOrderCard(d.order_id);
+    if (d.market_order_id) await addMarketCard(d.market_order_id);
+    else if (d.order_id) await addOrderCard(d.order_id);
   } catch (err) { thinking.textContent = "Network error, please retry."; }
   finally { form.querySelector("button").disabled = false; input.focus(); }
 });

@@ -38,7 +38,9 @@ def _system() -> str:
         "- Search, read the menu, and check availability before ordering. Resolve weekday names to real dates.\n"
         "- Confirm items, quantities, pickup date/window and total with the shopper before calling place_order, "
         "unless they already clearly asked you to order.\n"
-        "- After place_order, tell the shopper to tap the 'Approve payment in PayPal' button shown below your message. "
+        "- If the shopper wants things from more than one stall for the same day, use place_market_order so they "
+        "approve ONE PayPal payment that pays every seller directly. Check availability at each stall first.\n"
+        "- After place_order or place_market_order, tell the shopper to tap the 'Approve payment in PayPal' button shown below your message. "
         "Never write any URL yourself: no PayPal links, no API endpoints, no capture links. The app shows the only valid link. "
         "You never pay or capture yourself and must not say the order is paid until get_order_status says so.\n"
         "- If a tool returns an error, explain it simply and suggest an alternative.\n"
@@ -82,6 +84,7 @@ def chat(session_id: str | None, user_text: str) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     approval_url = None
     order_id = None
+    market_order_id = None
     reply = ""
     for _ in range(MAX_STEPS):
         try:
@@ -114,9 +117,12 @@ def chat(session_id: str | None, user_text: str) -> dict[str, Any]:
         results = []
         for tu in tool_uses:
             result = tools.call(tu.name, dict(tu.input))
-            if isinstance(result, dict) and result.get("paypal_approval_url"):
+            if isinstance(result, dict) and result.get("market_order_id") and tu.name == "place_market_order":
+                market_order_id, order_id = result["market_order_id"], None
+                approval_url = result.get("paypal_approval_url")
+            elif isinstance(result, dict) and result.get("paypal_approval_url") and tu.name == "place_order":
                 approval_url = result["paypal_approval_url"]
-                order_id = result.get("order_id")
+                order_id, market_order_id = result.get("order_id"), None
             steps.append({"tool": tu.name, "input": tu.input, "ok": not (isinstance(result, dict) and "error" in result),
                           "summary": _summarize(tu.name, result)})
             results.append({"type": "tool_result", "tool_use_id": tu.id, "content": json.dumps(result)[:20000],
@@ -125,7 +131,8 @@ def chat(session_id: str | None, user_text: str) -> dict[str, Any]:
     else:
         reply = reply or "I took too many steps on that. Could you narrow down what you want?"
 
-    return {"session_id": session_id, "reply": scrub_urls(reply), "steps": steps, "paypal_approval_url": approval_url, "order_id": order_id}
+    return {"session_id": session_id, "reply": scrub_urls(reply), "steps": steps, "paypal_approval_url": approval_url, "order_id": order_id,
+            "market_order_id": market_order_id}
 
 
 _URL = re.compile(r"https?://\S+|www\.\S+")
@@ -148,6 +155,11 @@ def _summarize(name: str, result: Any) -> str:
         return f"{result.get('weekday')} {result.get('pickup_date')}: " + ("open" if result.get("open") else f"closed ({result.get('reason_closed')})")
     if name == "place_order":
         return f"Order {result.get('order_id')} for {result.get('total')} created, awaiting PayPal approval"
+    if name == "place_market_order":
+        return (f"Market run {result.get('market_order_id')}: {result.get('stall_count')} stalls, {result.get('total')}, "
+                + ("one PayPal approval" if result.get("mode") == "single" else "one approval per stall"))
+    if name == "get_market_order_status":
+        return f"Market run {result.get('market_order_id')}: {result.get('status_label')}"
     if name == "get_order_status":
         return f"Order {result.get('order_id')}: {result.get('status_label')}"
     if name == "request_custom_order":

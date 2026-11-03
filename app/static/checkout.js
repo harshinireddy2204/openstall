@@ -53,7 +53,7 @@ const OpenStallCheckout = (() => {
       ${good && order.pickup_address ? `<p class="muted">${esc(order.pickup_address)}</p>` : ""}
       ${order.error ? `<p class="error">${esc(order.error)}</p>` : ""}
       ${order.tracking ? `<p class="muted">Tracking: ${esc(order.tracking.carrier)} ${esc(order.tracking.number)}</p>` : ""}
-      ${order.status === "pending_payment" && order.paypal_approval_url ? `<button class="btn primary pay-btn">Approve payment in PayPal</button>` : ""}
+      ${order.status === "pending_payment" && order.paypal_approval_url && el.dataset.inMarket !== "1" ? `<button class="btn primary pay-btn">${order.market_order_id ? "Approve market run payment in PayPal" : "Approve payment in PayPal"}</button>` : ""}
       <a class="muted small-link" href="/order/${esc(order.order_id)}" target="_blank" rel="noopener">Order page</a>`;
     const btn = el.querySelector(".pay-btn");
     if (btn) btn.onclick = () => pay(order.paypal_approval_url, order.order_id, el);
@@ -91,5 +91,71 @@ const OpenStallCheckout = (() => {
     }, 2500);
   }
 
-  return { card, pay, refresh, track, remember, remembered };
+  // ---------------------------------------------------------------- market runs
+  // One basket across several stalls. In "single" mode one PayPal approval pays every seller.
+  function marketCard(basket, el) {
+    el = el || document.createElement("div");
+    const keep = el.classList.contains("msg") ? " msg bot" : "";
+    el.className = "market-card status-" + basket.status + keep;
+    el.dataset.marketId = basket.market_order_id;
+    const good = basket.status === "paid";
+    const single = basket.mode === "single";
+    el.innerHTML = `
+      <div class="order-card-head"><span class="badge ${good ? "ok" : basket.status === "pending_payment" ? "wait" : "warn"}">${esc(basket.status_label)}</span>
+        <span class="muted">${esc(basket.market_order_id)}</span></div>
+      <strong>Market run · ${esc(basket.stall_count)} stall${basket.stall_count === 1 ? "" : "s"} · ${esc(basket.total)}</strong>
+      <p class="muted">Pickup ${esc(basket.pickup_date)}. ${single ? "One PayPal approval pays each seller directly." : "Each stall has its own PayPal approval."}</p>
+      ${basket.error ? `<p class="error">${esc(basket.error)}</p>` : ""}
+      ${single && basket.paypal_approval_url ? `<button class="btn primary pay-all">Approve one payment in PayPal (${esc(basket.total)})</button>` : ""}
+      <div class="market-orders"></div>
+      <a class="muted small-link" href="/market/${esc(basket.market_order_id)}" target="_blank" rel="noopener">Market run page</a>`;
+    const box = el.querySelector(".market-orders");
+    for (const o of basket.orders || []) {
+      const c = document.createElement("div");
+      if (single) c.dataset.inMarket = "1";  // the market-level button pays this stall; no per-stall button
+      card(o, c);
+      box.appendChild(c);
+      if (LIVE.includes(o.status) || o.status === "pending_payment") track(o.order_id, c);
+    }
+    const btn = el.querySelector(".pay-all");
+    if (btn) btn.onclick = () => payMarket(basket, el);
+    return el;
+  }
+
+  async function refreshMarket(id, el, confirm) {
+    const res = await fetch(`/api/market/${id}${confirm ? "/confirm" : ""}`, { method: confirm ? "POST" : "GET" });
+    const basket = await res.json();
+    if (res.ok) marketCard(basket, el);
+    return basket;
+  }
+
+  function payMarket(basket, el) {
+    const url = basket.paypal_approval_url, id = basket.market_order_id;
+    const childIds = (basket.orders || []).map((o) => o.order_id);
+    const w = 480, h = 720;
+    const popup = window.open(url, "openstall_paypal", `width=${w},height=${h},left=${(screen.width - w) / 2},top=${(screen.height - h) / 2}`);
+    if (!popup) { window.location = url; return; }
+    const btn = el.querySelector(".pay-all");
+    if (btn) { btn.disabled = true; btn.textContent = "Waiting for PayPal..."; }
+    let finished = false;
+    const finish = async () => {
+      if (finished) return; finished = true;
+      clearInterval(timer); window.removeEventListener("message", onMsg);
+      await refreshMarket(id, el, true);
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+    const onMsg = (e) => {
+      if (e.origin !== location.origin || !e.data) return;
+      if ((e.data.type === "openstall-market" && e.data.market_order_id === id) || (e.data.type === "openstall-order" && childIds.includes(e.data.order_id))) finish();
+    };
+    window.addEventListener("message", onMsg);
+    const timer = setInterval(async () => {
+      if (popup.closed) return finish();
+      const r = await fetch(`/api/market/${id}`).catch(() => null);
+      const b = r && r.ok ? await r.json() : null;
+      if (b && b.status !== "pending_payment") { try { popup.close(); } catch (_) {} finish(); }
+    }, 2500);
+  }
+
+  return { card, pay, refresh, track, remember, remembered, marketCard, refreshMarket };
 })();
