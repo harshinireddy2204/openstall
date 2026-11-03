@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -109,6 +111,12 @@ def now_iso() -> str:
 
 
 def _connect() -> sqlite3.Connection:
+    folder = os.path.dirname(os.path.abspath(settings.database_path))
+    os.makedirs(folder, exist_ok=True)
+    if os.getenv("RAILWAY_ENVIRONMENT") and not os.getenv("RAILWAY_VOLUME_MOUNT_PATH"):
+        logging.getLogger("openstall").warning(
+            "No Railway volume is attached: %s will be lost on every deploy or restart. "
+            "Attach a volume mounted at %s.", settings.database_path, folder)
     # isolation_level=None: autocommit, transactions are opened explicitly in tx().
     conn = sqlite3.connect(settings.database_path, check_same_thread=False, timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
