@@ -63,12 +63,15 @@ class CreatedOrder:
     status: str
 
 
-def _parse_capture(c: dict[str, Any]) -> dict[str, Any]:
+def _parse_capture(c: dict[str, Any], unit: dict[str, Any] | None = None) -> dict[str, Any]:
+    payee = (unit or {}).get("payee") or {}
     return {
         "status": c["status"],  # COMPLETED, PENDING, DECLINED...
         "capture_id": c["id"],
         "amount_cents": to_cents(c["amount"]["value"]),
         "currency": c["amount"].get("currency_code", settings.currency),
+        # Which PayPal account actually received this money (proof that each seller is paid directly).
+        "payee": payee.get("merchant_id") or payee.get("email_address") or "",
     }
 
 
@@ -77,7 +80,7 @@ def captures_by_reference(order: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for pu in (order or {}).get("purchase_units") or []:
         try:
-            out[pu.get("reference_id") or ""] = _parse_capture(pu["payments"]["captures"][0])
+            out[pu.get("reference_id") or ""] = _parse_capture(pu["payments"]["captures"][0], pu)
         except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
             continue
     return out
@@ -90,7 +93,7 @@ def capture_from_order(order: dict[str, Any], reference_id: str | None = None) -
     if reference_id and len(units) > 1:
         return captures_by_reference(order).get(reference_id)
     try:
-        return _parse_capture(units[0]["payments"]["captures"][0])
+        return _parse_capture(units[0]["payments"]["captures"][0], units[0])
     except (KeyError, IndexError, TypeError, ValueError, ArithmeticError):
         return None
 
@@ -253,7 +256,8 @@ class PayPalClient:
             oid = "MOCK-" + uuid.uuid4().hex[:12].upper()
             self._mock_orders[oid] = {"status": "CREATED", "reference_id": units[0]["reference_id"],
                                       "total_cents": sum(u["total_cents"] for u in units),
-                                      "units": [{"reference_id": u["reference_id"], "total_cents": u["total_cents"]} for u in units]}
+                                      "units": [{"reference_id": u["reference_id"], "total_cents": u["total_cents"],
+                                                 "payee_email": u.get("payee_email")} for u in units]}
             return CreatedOrder(oid, f"{settings.base_url}/mock-paypal/approve?token={oid}", "CREATED")
         body = {
             "intent": "CAPTURE",
@@ -298,7 +302,9 @@ class PayPalClient:
             out: dict[str, Any] = {"id": paypal_order_id, "status": o["status"]}
             if o.get("units"):
                 out["purchase_units"] = [
-                    {"reference_id": u["reference_id"], **({"payments": {"captures": [{
+                    {"reference_id": u["reference_id"],
+                     "payee": {"email_address": u.get("payee_email") or "openstall-platform@business.example.com"},
+                     **({"payments": {"captures": [{
                         "id": o["captures"][u["reference_id"]], "status": "COMPLETED", "amount": money(u["total_cents"]),
                     }]}} if o.get("captures", {}).get(u["reference_id"]) else {})}
                     for u in o["units"]

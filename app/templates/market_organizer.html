@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Organizer · {{ m.name }}{% endblock %}
+{% block head %}<style>main { max-width: 1400px; }</style>{% endblock %}
+{% block content %}
+<section>
+  <p class="eyebrow">Market organizer · keep this link private</p>
+  <h1>{{ m.name }}</h1>
+  <p><a href="/m/{{ m.market_id }}">Public market page</a> · <a href="/m/{{ m.market_id }}/qr.svg" download>QR code</a> · Listed for agents at <code>{{ settings.mcp_url }}</code></p>
+  <p><a class="btn primary" href="/m/{{ m.market_id }}/insights?key={{ key|urlencode }}">Open Market Insights</a>
+    <span class="muted">Which stalls lose the most demand, how much of the market AI agents buy, and an assistant for the whole market.</span></p>
+  <p class="muted">You see every stall's orders, but only each seller can fulfil or refund their own. Money always goes straight to each seller's PayPal.</p>
+</section>
+
+<section class="card">
+  <div class="orders-head"><h2>All orders at this market</h2><span class="muted" id="orders-count"></span></div>
+  <div class="orders-tools">
+    <form id="orders-ask" class="ask">
+      <input type="text" maxlength="300" placeholder="Ask in plain words, e.g. &quot;which stalls have unpaid orders for Saturday?&quot;" aria-label="Ask the orders grid">
+      <button class="btn primary small">Ask</button>
+    </form>
+    <input id="orders-quick" type="search" placeholder="Quick filter" aria-label="Quick filter">
+    <button class="btn small" id="orders-csv" type="button">Export CSV</button>
+    <button class="btn small" id="orders-reset" type="button">Reset view</button>
+  </div>
+  <p class="ask-hints muted">Try:
+    <a href="#" data-ask="Group by stall and show total revenue">Revenue by stall</a> ·
+    <a href="#" data-ask="Only market-run orders from AI agents">AI agent market runs</a> ·
+    <a href="#" data-ask="Orders that are paid but not picked up, grouped by pickup date">Still to hand out</a></p>
+  <p id="orders-ask-out" class="ask-out" aria-live="polite"></p>
+  <div id="orders-grid" class="orders-grid" hidden></div>
+  <div id="orders-fallback"><p class="muted">Loading orders...</p></div>
+</section>
+
+<section class="card">
+  <h2>Stalls ({{ m.stall_count }})</h2>
+  <ul class="stall-list" data-market="{{ m.market_id }}" data-key="{{ key }}">
+    {% for s in m.stalls %}<li><a href="/s/{{ s.stall_id }}">{{ s.name }}</a> <span class="muted">{{ s.city }}</span>
+      <button class="btn small" data-stall="{{ s.stall_id }}" data-action="remove">Remove</button></li>{% endfor %}
+  </ul>
+  {% if others %}
+  <form class="row add-stall">
+    <select name="stall_id">{% for s in others %}<option value="{{ s.id }}">{{ s.name }} ({{ s.city }})</option>{% endfor %}</select>
+    <button class="btn small">Add stall</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script type="application/json" id="orders-config">{{ orders_config|tojson }}</script>
+<script src="/static/studio/orders.js" defer></script>
+<script>
+  (() => {
+    const list = document.querySelector(".stall-list");
+    const send = async (stall_id, action) => {
+      const res = await fetch(`/api/markets/${list.dataset.market}/stalls`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: list.dataset.key, stall_id, action }) });
+      if (res.ok) location.reload(); else alert((await res.json()).message || "Could not update the market.");
+    };
+    list.addEventListener("click", (e) => { const b = e.target.closest("button[data-action]"); if (b && confirm("Remove this stall from the market?")) send(b.dataset.stall, "remove"); });
+    const add = document.querySelector(".add-stall");
+    if (add) add.addEventListener("submit", (e) => { e.preventDefault(); send(add.stall_id.value, "add"); });
+  })();
+</script>
+{% endblock %}

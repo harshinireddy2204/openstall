@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · {{ stall.name }}{% endblock %}
+{% block head %}<style>main { max-width: 1400px; }</style>{% endblock %}
 {% block content %}
 <section>
   <p class="eyebrow">Seller dashboard · keep this link private</p>
@@ -15,7 +16,23 @@
 </section>
 
 <section class="card">
-  <h2>Orders</h2>
+  <div class="orders-head"><h2>Orders</h2><span class="muted" id="orders-count"></span></div>
+  <div class="orders-tools">
+    <form id="orders-ask" class="ask">
+      <input type="text" maxlength="300" placeholder="Ask your orders in plain words, e.g. &quot;Saturday market-run orders not picked up yet&quot;" aria-label="Ask the orders grid">
+      <button class="btn primary small">Ask</button>
+    </form>
+    <input id="orders-quick" type="search" placeholder="Quick filter" aria-label="Quick filter">
+    <button class="btn small" id="orders-csv" type="button">Export CSV</button>
+    <button class="btn small" id="orders-reset" type="button">Reset view</button>
+  </div>
+  <p class="ask-hints muted">Try:
+    <a href="#" data-ask="Show only orders from AI agents, newest pickup first">AI agent orders</a> ·
+    <a href="#" data-ask="Group by pickup date and show total revenue">Revenue by pickup day</a> ·
+    <a href="#" data-ask="Market-run orders that are paid but not ready yet">Market runs to prepare</a></p>
+  <p id="orders-ask-out" class="ask-out" aria-live="polite"></p>
+  <div id="orders-grid" class="orders-grid" hidden></div>
+  <div id="orders-fallback">
   {% if not orders %}<p class="muted">No orders yet. Share your stall or ask an AI agent to find you.</p>{% endif %}
   <table class="orders" data-stall="{{ stall.id }}" data-key="{{ key }}">
     <thead><tr><th>Pickup</th><th>Order</th><th>Items</th><th>Total</th><th>Via</th><th>Status</th><th>Actions</th></tr></thead>
@@ -41,6 +58,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 
 {% if invoices %}
@@ -73,4 +91,6 @@
   <ul class="events">{% for e in events %}<li><span class="muted">{{ e.created_at[:16].replace("T", " ") }}</span> {{ e.kind.replace("_", " ") }}{% if e.order_id %} · {{ e.order_id }}{% endif %}</li>{% endfor %}</ul>
 </section>
 {% endblock %}
-{% block scripts %}<script src="/static/dashboard.js"></script>{% endblock %}
+{% block scripts %}<script src="/static/dashboard.js"></script>
+<script type="application/json" id="orders-config">{{ orders_config|tojson }}</script>
+<script src="/static/studio/orders.js" defer></script>{% endblock %}

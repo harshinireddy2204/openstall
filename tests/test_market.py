@@ -249,3 +249,26 @@ def test_dashboard_lists_other_stalls_for_the_same_key(client, monkeypatch):
     with db.tx() as c:
         c.execute("UPDATE stalls SET owner_key='only-noor' WHERE id=?", (NOOR,))
     assert "Your other stalls" not in client.get(f"/s/{NOOR}/dashboard?key=only-noor").text
+
+
+def test_each_stall_records_which_paypal_account_was_paid(client):
+    day, stalls = common_day()
+    emails = {}
+    with db.tx() as c:
+        for i, s in enumerate(stalls):
+            emails[s] = f"seller{i}@business.example.com"
+            c.execute("UPDATE stalls SET paypal_email=? WHERE id=?", (emails[s], s))
+    b = client.post("/api/market", json={"pickup_date": day, "stalls": basket_for(stalls, 1)}).json()
+    after = approve(client, b)
+    paid_to = {o["stall_id"]: o.get("paid_to", "") for o in after["orders"]}
+    for s in stalls:
+        assert paid_to[s].startswith(emails[s][:3]) and paid_to[s].endswith("@business.example.com")
+    assert len(set(paid_to.values())) == len(stalls)
+
+
+def test_demo_payees_env_assigns_each_stall(monkeypatch):
+    from app.main import apply_demo_payees
+    monkeypatch.setenv("DEMO_STALL_PAYEES", f"{TAMALES}=t@business.example.com, {PICKLE}=p@business.example.com,bad")
+    apply_demo_payees()
+    assert db.query_one("SELECT paypal_email FROM stalls WHERE id=?", (TAMALES,))["paypal_email"] == "t@business.example.com"
+    assert db.query_one("SELECT paypal_email FROM stalls WHERE id=?", (PICKLE,))["paypal_email"] == "p@business.example.com"

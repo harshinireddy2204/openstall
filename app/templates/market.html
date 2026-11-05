@@ -2,7 +2,7 @@
 {% block title %}Market run · OpenStall{% endblock %}
 {% block content %}
 <section>
-  <p class="eyebrow">Market run</p>
+  <p class="eyebrow">{% if group %}<a href="/m/{{ group.market_id }}">{{ group.name }}</a> · {% endif %}Market run</p>
   <h1>Shop several stalls. <em>Pay once.</em></h1>
   <p class="lead">Pick a pickup day and fill one basket from any stalls. You approve one PayPal payment, and each seller is paid directly
     with their own order, pickup window and refunds.</p>

@@ -165,3 +165,27 @@ def test_bridge_fails_cleanly(monkeypatch):
 def test_bridge_without_api_key_explains(client):
     r = client.post(f"/api/studio/llm?stall={NOOR}&key={owner_key()}", json=STUDIO_REQUEST)
     assert r.status_code == 200 and "ANTHROPIC_API_KEY" in r.json()["output"][0]["content"][0]["text"]
+
+
+def test_orders_api_and_grid_command_need_owner_key(client):
+    assert client.get(f"/api/stalls/{NOOR}/orders?key=nope").status_code == 403
+    assert client.post(f"/api/grid/command?stall={NOOR}&key=nope", json={}).status_code == 403
+    r = client.get(f"/api/stalls/{NOOR}/orders?key={owner_key()}")
+    assert r.status_code == 200 and isinstance(r.json()["orders"], list)
+    r = client.post(f"/api/grid/command?stall={NOOR}&key={owner_key()}", json={"request": "only AI agent orders", "schema": {"type": "object"}})
+    assert r.status_code == 200 and "ANTHROPIC_API_KEY" in r.json()["message"]
+
+
+def test_grid_command_returns_validated_state(monkeypatch):
+    import anthropic
+
+    reply = _msg(SimpleNamespace(type="tool_use", id="t1", name="apply_grid_state", input={
+        "gridState": {"filter": {"filterModel": {"channel": {"filterType": "set", "values": ["AI agent"]}}}},
+        "propertiesToIgnore": ["sort", "bogus"], "explanation": "Showing AI agent orders."}))
+    fake = _FakeClient([reply])
+    monkeypatch.setattr(anthropic, "Anthropic", lambda api_key: fake)
+    monkeypatch.setattr(insights, "settings", SimpleNamespace(ai_live=True, anthropic_api_key="k", anthropic_model="m"))
+    out = insights.run_grid_command({"request": "only AI agent orders", "schema": {"type": "object"}, "state": {}})
+    assert out["propertiesToIgnore"] == ["sort"] and out["gridState"]["filter"]
+    assert fake.calls[0]["tool_choice"]["name"] == "apply_grid_state"
+    assert insights.run_grid_command({"request": "", "schema": {}})["error"] == "bad_request"

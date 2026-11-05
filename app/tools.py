@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from typing import Any, Callable
 
-from . import insights, market, service
+from . import insights, market, markets, service
 from .rules import RuleViolation
 
 
@@ -32,6 +32,20 @@ def find_stalls(query: str = "", lat: float | None = None, lng: float | None = N
     """
     stalls = service.find_stalls(query, lat, lng, radius_km)
     return {"count": len(stalls), "stalls": stalls}
+
+
+@_safe
+def find_markets(query: str = "") -> dict[str, Any]:
+    """Find farmers markets and stall groups on OpenStall (e.g. "Lowell", "saturday market").
+    A market's stalls can all be bought together with place_market_order and ONE PayPal approval."""
+    found = markets.list_markets(query)
+    return {"count": len(found), "markets": found}
+
+
+@_safe
+def get_market(market_id: str) -> dict[str, Any]:
+    """Get a market's stalls (stall_id, category, pickup days). Then use get_menu per stall and place_market_order."""
+    return markets.get_market(market_id)
 
 
 @_safe
@@ -152,12 +166,22 @@ def get_custom_order_status(custom_order_id: str) -> dict[str, Any]:
 
 
 TOOLS: list[Callable[..., Any]] = [
-    find_stalls, get_menu, check_availability, place_order, place_market_order, get_order_status, get_market_order_status,
+    find_stalls, find_markets, get_market, get_menu, check_availability, place_order, place_market_order, get_order_status, get_market_order_status,
     request_custom_order, get_custom_order_status,
 ]
 
 # JSON schemas for the Claude tool-use buyer agent (the MCP server derives its own from signatures).
 SCHEMAS: list[dict[str, Any]] = [
+    {
+        "name": "find_markets",
+        "description": find_markets.__doc__,
+        "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+    },
+    {
+        "name": "get_market",
+        "description": get_market.__doc__,
+        "input_schema": {"type": "object", "properties": {"market_id": {"type": "string"}}, "required": ["market_id"]},
+    },
     {
         "name": "find_stalls",
         "description": find_stalls.__doc__,

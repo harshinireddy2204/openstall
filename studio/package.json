@@ -3,10 +3,13 @@
   "private": true,
   "description": "AG Studio seller Insights for OpenStall. Built into app/static/studio/insights.js so the Python app needs no Node at runtime.",
   "scripts": {
-    "build": "esbuild src/insights.js --bundle --minify --format=iife --target=es2020 --legal-comments=none --outfile=../app/static/studio/insights.js"
+    "build": "npm run build:insights && npm run build:orders",
+    "build:insights": "esbuild src/insights.js --bundle --minify --format=iife --target=es2020 --legal-comments=none --outfile=../app/static/studio/insights.js",
+    "build:orders": "esbuild src/orders.js --bundle --minify --format=iife --target=es2020 --legal-comments=none --outfile=../app/static/studio/orders.js"
   },
   "dependencies": {
-    "ag-studio": "3.0.0"
+    "ag-studio": "3.0.0",
+    "ag-grid-enterprise": "36.3.0"
   },
   "devDependencies": {
     "esbuild": "0.25.10"

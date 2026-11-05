@@ -4,12 +4,16 @@
 {% block content %}
 <section class="insights-head">
   <div>
-    <p class="eyebrow">Seller Insights · keep this link private</p>
+    <p class="eyebrow">{% if market %}Market Insights for organizers{% else %}Seller Insights{% endif %} · keep this link private</p>
     <h1>{{ stall.name }}</h1>
     <p class="muted">Ask the assistant on the left a question in plain words. Every chart is editable.
       "Sample history" rows are demo data so the dashboard is not empty; real orders are marked "Live".</p>
   </div>
+  {% if market %}
+  <p><a class="btn" href="/m/{{ market.market_id }}/organizer?key={{ key|urlencode }}">Back to the market</a></p>
+  {% else %}
   <p><a class="btn" href="/s/{{ stall.id }}/dashboard?key={{ key|urlencode }}">Back to orders</a></p>
+  {% endif %}
 </section>
 <div id="studio" class="studio-host"></div>
 <script type="application/json" id="studio-config">{{ studio_config|tojson }}</script>

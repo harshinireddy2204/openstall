@@ -51,6 +51,7 @@ const OpenStallCheckout = (() => {
       <ul>${lines}</ul>
       <div class="order-card-foot"><strong>${esc(order.total)}</strong>
         <span class="muted">Pickup ${esc(order.pickup_date)} · ${esc(order.pickup_window)}</span></div>
+      ${order.paid_to ? `<p class="paid-to">Paid directly to ${esc(order.stall_name)}'s PayPal: <code>${esc(order.paid_to)}</code></p>` : ""}
       ${good && order.pickup_address ? `<p class="muted">${esc(order.pickup_address)}</p>` : ""}
       ${order.error ? `<p class="error">${esc(order.error)}</p>` : ""}
       ${order.tracking ? `<p class="muted">Tracking: ${esc(order.tracking.carrier)} ${esc(order.tracking.number)}</p>` : ""}

@@ -398,6 +398,15 @@ def get_order(order_id: str) -> dict[str, Any] | None:
     return query_one("SELECT * FROM orders WHERE id=?", (order_id,))
 
 
+def mask_payee(p: str) -> str:
+    """Show which PayPal account received the money without printing a full email."""
+    if "@" in p:
+        name, _, domain = p.partition("@")
+        shown = f"{name[:4]}…{name[-4:]}" if len(name) > 10 else f"{name[:3]}…{name[-1:]}"
+        return f"{shown}@{domain}"
+    return f"PayPal merchant {p}"
+
+
 def order_view(order_id: str) -> dict[str, Any]:
     o = get_order(order_id)
     if not o:
@@ -419,6 +428,8 @@ def order_view(order_id: str) -> dict[str, Any]:
         "tracking": o["tracking"],
         "market_order_id": o.get("basket_id"),
     }
+    if o.get("paypal_payee"):
+        view["paid_to"] = mask_payee(o["paypal_payee"])
     view["steps"] = order_steps(o)
     if o["status"] == "pending_payment" and o["approve_url"]:
         view["paypal_approval_url"] = o["approve_url"]
@@ -576,10 +587,11 @@ def _safe_refund(o: dict[str, Any], capture_id: str, reason: str) -> str:
 def _finalize_capture(o: dict[str, Any], cap: dict[str, Any]) -> dict[str, Any]:
     """Verify a captured payment against the order, then mark paid / review / refund."""
     order_id = o["id"]
+    pk = {"paypal_payee": cap["payee"]} if cap.get("payee") else {}
     if cap["amount_cents"] != o["subtotal_cents"] or cap.get("currency", settings.currency) != settings.currency:
         # Never accept an amount or currency that differs from the catalog-priced order.
         status = _safe_refund(o, cap["capture_id"], "Amount mismatch, refunded automatically.")
-        _set_status(order_id, status, paypal_capture_id=cap["capture_id"])
+        _set_status(order_id, status, paypal_capture_id=cap["capture_id"], **pk)
         log_event("amount_mismatch", stall_id=o["stall_id"], order_id=order_id, captured=cap["amount_cents"], currency=cap.get("currency"))
         return order_view(order_id)
 
@@ -587,18 +599,18 @@ def _finalize_capture(o: dict[str, Any], cap: dict[str, Any]) -> dict[str, Any]:
     if current and current["status"] in ("sold_out", "cancelled"):
         # Money arrived for an order we had already closed (e.g. late webhook): give it back.
         status = _safe_refund(o, cap["capture_id"], "Order was closed before payment completed.")
-        _set_status(order_id, status, paypal_capture_id=cap["capture_id"])
+        _set_status(order_id, status, paypal_capture_id=cap["capture_id"], **pk)
         return order_view(order_id)
 
     if cap["status"] == "COMPLETED":
-        _set_status(order_id, "paid", paypal_capture_id=cap["capture_id"])
+        _set_status(order_id, "paid", paypal_capture_id=cap["capture_id"], **pk)
         log_event("order_paid", stall_id=o["stall_id"], order_id=order_id)
     elif cap["status"] == "PENDING":
         # e.g. eCheck or PayPal review: hold stock but don't release goods until COMPLETED webhook.
-        _set_status(order_id, "payment_review", paypal_capture_id=cap["capture_id"])
+        _set_status(order_id, "payment_review", paypal_capture_id=cap["capture_id"], **pk)
         log_event("payment_review", stall_id=o["stall_id"], order_id=order_id)
     else:  # DECLINED / FAILED
-        _set_status(order_id, "payment_failed", paypal_capture_id=cap["capture_id"])
+        _set_status(order_id, "payment_failed", paypal_capture_id=cap["capture_id"], **pk)
         log_event("capture_declined", stall_id=o["stall_id"], order_id=order_id, capture_status=cap["status"])
         return {**order_view(order_id), "error": "PayPal declined the payment. You were not charged."}
     return order_view(order_id)

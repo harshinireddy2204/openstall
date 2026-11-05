@@ -38,6 +38,7 @@ def _system() -> str:
         "- Search, read the menu, and check availability before ordering. Resolve weekday names to real dates.\n"
         "- Confirm items, quantities, pickup date/window and total with the shopper before calling place_order, "
         "unless they already clearly asked you to order.\n"
+        "- If the shopper names a market (e.g. 'Lowell Saturday Market'), use find_markets and get_market to see its stalls.\n"
         "- If the shopper wants things from more than one stall for the same day, use place_market_order so they "
         "approve ONE PayPal payment that pays every seller directly. Check availability at each stall first.\n"
         "- After place_order or place_market_order, tell the shopper to tap the 'Approve payment in PayPal' button shown below your message. "
@@ -149,6 +150,10 @@ def _summarize(name: str, result: Any) -> str:
         return f"Blocked: {result.get('message')}"
     if name == "find_stalls":
         return f"Found {result.get('count', 0)} stall(s): " + ", ".join(s["name"] for s in result.get("stalls", [])[:4])
+    if name == "find_markets":
+        return f"Found {result.get('count', 0)} market(s): " + ", ".join(m["name"] for m in result.get("markets", [])[:3])
+    if name == "get_market":
+        return f"{result.get('name')}: {result.get('stall_count')} stalls"
     if name == "get_menu":
         return f"Read menu of {result.get('name')} ({len(result.get('items', []))} items)"
     if name == "check_availability":

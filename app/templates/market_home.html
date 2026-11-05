@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ m.name }} · OpenStall{% endblock %}
+{% block head %}<meta name="description" content="{{ m.name }}: {{ m.stall_count }} local stalls. Shop the whole market with one PayPal payment, or let your AI agent do it.">{% endblock %}
+{% block content %}
+<section class="mh-hero">
+  <div>
+    <p class="eyebrow">{{ m.city }}{% if m.schedule %} · {{ m.schedule }}{% endif %}</p>
+    <h1>{{ m.name }}</h1>
+    <p class="lead">{{ m.description }}</p>
+    <p><a class="btn primary" href="/market?m={{ m.market_id }}">Shop the whole market, pay once with PayPal</a>
+       <a class="btn" href="/shop">Ask an AI agent to shop it</a></p>
+    <p class="muted">{{ m.stall_count }} stall{{ "" if m.stall_count == 1 else "s" }}. One basket, one PayPal approval, and each seller is paid directly.</p>
+  </div>
+  <figure class="mh-qr card">
+    {{ qr|safe }}
+    <figcaption>Scan to shop this market<br><a href="/m/{{ m.market_id }}/qr.svg" download="{{ m.market_id }}-qr.svg">Download QR for your stand</a></figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>Stalls at this market</h2>
+  <div class="stall-cards">
+  {% for s in m.stalls %}
+    <a class="card stall-card" href="/s/{{ s.stall_id }}">
+      <span class="tag">{{ s.category }}</span>
+      <strong>{{ s.name }}</strong>
+      <span class="muted">{{ s.description }}</span>
+      <span class="muted">{{ s.city }}</span>
+    </a>
+  {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>For AI agents</h2>
+  <p>This whole market is listed on the OpenStall MCP server. Tell your assistant:
+    <em>"Shop {{ m.name }} for Saturday brunch for 6 and pay once with PayPal."</em></p>
+  <pre><code>{{ settings.mcp_url }}</code></pre>
+  <p class="muted">Tools: find_markets, get_market, get_menu, check_availability, place_market_order. The shopper always approves in PayPal.</p>
+</section>
+<script type="application/ld+json">{{ {"@context": "https://schema.org", "@type": "Place", "name": m.name, "address": m.city, "url": page_url}|tojson|replace("<", "\\u003c") }}</script>
+{% endblock %}

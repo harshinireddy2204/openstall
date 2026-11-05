@@ -93,6 +93,21 @@ CREATE TABLE IF NOT EXISTS baskets (
     channel TEXT DEFAULT 'web',
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS markets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    city TEXT DEFAULT '',
+    schedule TEXT DEFAULT '',        -- e.g. "Saturdays 9:00 to 13:00"
+    description TEXT DEFAULT '',
+    organizer_key TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS market_stalls (
+    market_id TEXT NOT NULL REFERENCES markets(id),
+    stall_id TEXT NOT NULL REFERENCES stalls(id),
+    joined_at TEXT NOT NULL,
+    PRIMARY KEY (market_id, stall_id)
+);
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     stall_id TEXT,
@@ -143,6 +158,9 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "basket_id" not in cols:
         c.execute("ALTER TABLE orders ADD COLUMN basket_id TEXT")
     c.execute("CREATE INDEX IF NOT EXISTS idx_orders_basket ON orders(basket_id)")
+    ocols = {r[1] for r in c.execute("PRAGMA table_info(orders)")}
+    if "paypal_payee" not in ocols:
+        c.execute("ALTER TABLE orders ADD COLUMN paypal_payee TEXT")
     bcols = {r[1] for r in c.execute("PRAGMA table_info(baskets)")}
     if "client_ref" not in bcols:
         c.execute("ALTER TABLE baskets ADD COLUMN client_ref TEXT")

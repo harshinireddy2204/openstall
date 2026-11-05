@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Start a market · OpenStall{% endblock %}
+{% block content %}
+<section class="narrow">
+  <p class="eyebrow">For market organizers</p>
+  <h1>Make your whole market agent-ready</h1>
+  <p class="lead">One page, one QR code and one MCP listing for every stall. Shoppers and their AI agents fill one basket across stalls
+    and approve one PayPal payment that pays each seller directly.</p>
+  <form id="market-new" class="card">
+    <label>Market name <input name="name" required minlength="3" maxlength="80" placeholder="Lowell Saturday Market"></label>
+    <label>City <input name="city" maxlength="80" placeholder="Lowell, MA"></label>
+    <label>When <input name="schedule" maxlength="80" placeholder="Saturdays 9:00 to 13:00"></label>
+    <label>About <textarea name="description" maxlength="400" rows="2"></textarea></label>
+    <fieldset><legend>Stalls on OpenStall to include</legend>
+      {% for s in stalls %}<label class="check"><input type="checkbox" name="stall_ids" value="{{ s.id }}"> {{ s.name }} <span class="muted">{{ s.city }}</span></label>{% endfor %}
+    </fieldset>
+    <button class="btn primary">Create market</button>
+    <p class="error" id="mn-error"></p>
+  </form>
+  <div id="mn-result"></div>
+</section>
+{% endblock %}
+{% block scripts %}<script>
+  document.getElementById("market-new").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector("button");
+    btn.disabled = true;
+    const body = { name: f.name.value, city: f.city.value, schedule: f.schedule.value, description: f.description.value,
+      stall_ids: [...f.querySelectorAll("input[name=stall_ids]:checked")].map((i) => i.value) };
+    const res = await fetch("/api/markets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json();
+    if (!res.ok) { document.getElementById("mn-error").textContent = d.message || "Check the form and try again."; btn.disabled = false; return; }
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    f.hidden = true;
+    document.getElementById("mn-result").innerHTML = `<div class="card live"><h2>Your market is live</h2>
+      <p>Public page: <a href="${esc(d.public_url)}">${esc(d.public_url)}</a></p>
+      <p><strong>Organizer page (bookmark this):</strong> <a href="${esc(d.organizer_url)}">${esc(d.organizer_url)}</a></p></div>`;
+  });
+</script>{% endblock %}

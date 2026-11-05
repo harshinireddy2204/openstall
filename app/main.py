@@ -16,14 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import ai, buyer_agent, insights, market, service
+from . import ai, buyer_agent, insights, market, markets, service
 from .config import ROOT, settings
 from .db import log_event, now_iso, query, query_one, tx
 from .mcp_server import build_app, mcp
@@ -38,7 +38,39 @@ templates = Jinja2Templates(directory=str(HERE / "templates"))
 templates.env.globals.update(settings=settings, fmt_money=service.fmt_money, paypal_live=paypal.live)
 
 
+def apply_demo_payees() -> None:
+    """DEMO_STALL_PAYEES="stall-id=seller@business.example.com,..." gives each demo stall its own
+    sandbox PayPal account, so a market run visibly pays several different sellers."""
+    for pair in os.getenv("DEMO_STALL_PAYEES", "").split(","):
+        sid, _, email = pair.strip().partition("=")
+        if sid and "@" in email:
+            with tx() as c:
+                c.execute("UPDATE stalls SET paypal_email=? WHERE id=?", (email.strip(), sid.strip()))
+
+
 def seed_demo_data() -> None:
+    _seed_demo_data()
+    apply_demo_payees()
+    seed_demo_market()
+
+
+DEMO_MARKET_ID = "lowell-saturday-market"
+
+
+def seed_demo_market() -> None:
+    """One demo farmers market grouping the demo stalls, so judges can see the organizer view."""
+    if query_one("SELECT 1 FROM markets WHERE id=?", (DEMO_MARKET_ID,)):
+        return
+    ids = [r["id"] for name in (s["name"] for s in json.loads((ROOT / "seed" / "demo_stalls.json").read_text()))
+           if (r := query_one("SELECT id FROM stalls WHERE name=?", (name,)))]
+    key = os.getenv("DEMO_OWNER_KEY", "").strip() or None
+    m = markets.create_market("Lowell Saturday Market", "Lowell, MA", "Saturdays 9:00 to 13:00",
+                              "Home bakers, tamale makers and picklers from around the Merrimack Valley.",
+                              ids, organizer_key=key, market_id=DEMO_MARKET_ID)
+    log.info("Seeded market %s (organizer key: %s)", m["market_id"], m["organizer_key"])
+
+
+def _seed_demo_data() -> None:
     if query_one("SELECT 1 FROM stalls LIMIT 1"):
         # Older databases: give the demo stalls their sample history once.
         for stall in json.loads((ROOT / "seed" / "demo_stalls.json").read_text()):
@@ -81,7 +113,9 @@ RATE_LIMITS = [
     ("/api/catalog/extract", "POST", 10, 600),
     ("/agent/mcp", "POST", 120, 60),
     ("/webhooks/", "POST", 300, 60),
-    ("/api/studio/llm", "POST", 40, 600),     # Insights assistant turns (each costs a Claude call)
+    ("/api/studio/llm", "POST", 40, 600),
+    ("/api/grid/command", "POST", 30, 600),   # orders grid: plain-English view changes (Claude)
+    ("/api/markets", "POST", 10, 600),
 ]
 _hits: dict[tuple[str, str], deque] = defaultdict(deque)
 _hits_lock = threading.Lock()
@@ -176,13 +210,16 @@ def dashboard(request: Request, stall_id: str, key: str = ""):
         raise HTTPException(403, "Open the dashboard link you received when you created the stall.")
     orders = service.list_orders(stall_id)
     invoices = query("SELECT * FROM invoices WHERE stall_id=? ORDER BY created_at DESC", (stall_id,))
-    events = query("SELECT * FROM events WHERE stall_id=? ORDER BY id DESC LIMIT 25", (stall_id,))
+    events = query("SELECT * FROM events WHERE stall_id=? AND kind NOT IN ('agent_activity','demand_unmet') "
+                   "ORDER BY id DESC LIMIT 25", (stall_id,))
     # Someone running several stalls with one key (like the demo stalls) can switch between them.
     siblings = [s for s in query("SELECT id, name, owner_key FROM stalls ORDER BY created_at")
                 if s["id"] != stall_id and secrets.compare_digest(s["owner_key"], key)]
     return templates.TemplateResponse(
         request, "dashboard.html", {"stall": stall, "orders": orders, "invoices": invoices, "events": events, "key": key,
-                                    "siblings": [{"id": s["id"], "name": s["name"]} for s in siblings]}
+                                    "siblings": [{"id": s["id"], "name": s["name"]} for s in siblings],
+                                    "orders_config": {"stallId": stall_id, "key": key, "ships": bool(stall.get("ships")),
+                                                      "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live}}
     )
 
 
@@ -199,6 +236,114 @@ def insights_page(request: Request, stall_id: str, key: str = ""):
             "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live,
         },
     })
+
+
+# ------------------------------------------------------------------ markets
+@app.get("/m/{market_id}", response_class=HTMLResponse)
+def market_home(request: Request, market_id: str):
+    try:
+        m = markets.get_market(market_id)
+    except RuleViolation:
+        raise HTTPException(404, "Market not found")
+    return templates.TemplateResponse(request, "market_home.html", {
+        "m": m, "page_url": f"{settings.base_url}/m/{market_id}", "qr": _qr_svg(f"{settings.base_url}/m/{market_id}"),
+    })
+
+
+def _qr_svg(url: str) -> str:
+    import segno
+    return segno.make(url, error="m").svg_inline(scale=6, dark="#1f1b16", light="#ffffff", border=2)
+
+
+@app.get("/m/{market_id}/qr.svg")
+def market_qr(market_id: str):
+    markets.get_market(market_id)
+    return Response(_qr_svg(f"{settings.base_url}/m/{market_id}"), media_type="image/svg+xml")
+
+
+@app.get("/m/{market_id}/organizer", response_class=HTMLResponse)
+def market_organizer(request: Request, market_id: str, key: str = ""):
+    try:
+        mrow = markets.check_organizer(market_id, key)
+    except PermissionError:
+        raise HTTPException(403, "Open the organizer link you received when you created the market.")
+    m = markets.get_market(market_id)
+    in_market = set(markets.stall_ids(market_id))
+    others = [s for s in query("SELECT id, name, city FROM stalls ORDER BY created_at") if s["id"] not in in_market]
+    return templates.TemplateResponse(request, "market_organizer.html", {
+        "m": m, "key": key, "others": others, "page_url": f"{settings.base_url}/m/{market_id}",
+        "orders_config": {"marketId": market_id, "key": key, "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live},
+    })
+
+
+@app.get("/m/{market_id}/insights", response_class=HTMLResponse)
+def market_insights_page(request: Request, market_id: str, key: str = ""):
+    try:
+        markets.check_organizer(market_id, key)
+    except PermissionError:
+        raise HTTPException(403, "Open Insights from the organizer page.")
+    m = markets.get_market(market_id)
+    return templates.TemplateResponse(request, "insights.html", {
+        "stall": {"id": market_id, "name": m["name"]}, "key": key, "market": m,
+        "studio_config": {"marketId": market_id, "key": key, "stallName": m["name"], "stalls": [s["name"] for s in m["stalls"]],
+                          "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live},
+    })
+
+
+@app.get("/markets/new", response_class=HTMLResponse)
+def market_new(request: Request):
+    stalls = query("SELECT id, name, city, category FROM stalls ORDER BY created_at")
+    return templates.TemplateResponse(request, "market_new.html", {"stalls": stalls})
+
+
+class MarketCreateIn(BaseModel):
+    name: str = Field(min_length=3, max_length=80)
+    city: str = Field(default="", max_length=80)
+    schedule: str = Field(default="", max_length=80)
+    description: str = Field(default="", max_length=400)
+    stall_ids: list[str] = Field(default_factory=list, max_length=40)
+
+
+@app.post("/api/markets")
+def api_create_market(body: MarketCreateIn):
+    m = markets.create_market(body.name, body.city, body.schedule, body.description, body.stall_ids)
+    return {**m, "public_url": f"{settings.base_url}/m/{m['market_id']}",
+            "organizer_url": f"{settings.base_url}/m/{m['market_id']}/organizer?key={m['organizer_key']}"}
+
+
+class MarketStallIn(BaseModel):
+    key: str
+    stall_id: str
+    action: str = Field(pattern="^(add|remove)$")
+
+
+@app.post("/api/markets/{market_id}/stalls")
+def api_market_stalls(market_id: str, body: MarketStallIn):
+    markets.check_organizer(market_id, body.key)
+    (markets.add_stall if body.action == "add" else markets.remove_stall)(market_id, body.stall_id)
+    return markets.get_market(market_id)
+
+
+@app.get("/api/markets")
+def api_markets(q: str = ""):
+    return {"markets": markets.list_markets(q)}
+
+
+@app.get("/api/markets/{market_id}")
+def api_market(market_id: str):
+    return markets.get_market(market_id)
+
+
+@app.get("/api/markets/{market_id}/orders")
+def api_market_orders(market_id: str, key: str = ""):
+    markets.check_organizer(market_id, key)
+    return {"orders": markets.market_orders(market_id)}
+
+
+@app.get("/api/markets/{market_id}/insights")
+def api_market_insights(market_id: str, key: str = ""):
+    markets.check_organizer(market_id, key)
+    return markets.market_insights(market_id)
 
 
 @app.get("/orders", response_class=HTMLResponse)
@@ -221,9 +366,18 @@ def order_page(request: Request, order_id: str, error: str = ""):
 
 
 @app.get("/market", response_class=HTMLResponse)
-def market_builder(request: Request):
-    stalls = [service.get_stall(s["id"]) for s in query("SELECT id FROM stalls ORDER BY created_at")]
-    return templates.TemplateResponse(request, "market.html", {"stalls": stalls})
+def market_builder(request: Request, m: str = ""):
+    group = None
+    if m:
+        try:
+            group = markets.get_market(m)
+        except RuleViolation:
+            raise HTTPException(404, "Market not found")
+        ids = markets.stall_ids(m)
+    else:
+        ids = [s["id"] for s in query("SELECT id FROM stalls ORDER BY created_at")]
+    stalls = [s for sid in ids if (s := service.get_stall(sid))]
+    return templates.TemplateResponse(request, "market.html", {"stalls": stalls, "group": group})
 
 
 @app.get("/market/{market_order_id}", response_class=HTMLResponse)
@@ -355,10 +509,38 @@ def api_set_capacity(stall_id: str, body: CapacityIn):
     return service.set_daily_capacity(stall_id, body.item_id, body.daily_capacity)
 
 
+def _check_scope(stall: str, market_id: str, key: str) -> None:
+    """Seller key for one stall, or organizer key for a market (read-only across its stalls)."""
+    if market_id:
+        markets.check_organizer(market_id, key)
+    else:
+        service.check_owner(stall, key)
+
+
+@app.get("/api/stalls/{stall_id}/orders")
+def api_seller_orders(stall_id: str, key: str = ""):
+    service.check_owner(stall_id, key)
+    return {"orders": service.list_orders(stall_id)}
+
+
+@app.post("/api/grid/command")
+async def api_grid_command(request: Request, stall: str = "", market: str = "", key: str = ""):
+    """AG Grid AI Toolkit: turn a plain-English request into grid state with Claude. Owner or organizer key required."""
+    _check_scope(stall, market, key)
+    raw = await request.body()
+    if len(raw) > 200_000:
+        raise HTTPException(413, "Request too large")
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, "Invalid JSON")
+    return await run_in_threadpool(insights.run_grid_command, body)
+
+
 @app.post("/api/studio/llm")
-async def api_studio_llm(request: Request, stall: str = "", key: str = ""):
-    """Claude bridge for the AG Studio agent. Owner key required so only the seller spends tokens."""
-    service.check_owner(stall, key)
+async def api_studio_llm(request: Request, stall: str = "", market: str = "", key: str = ""):
+    """Claude bridge for the AG Studio agent. Owner or organizer key required so only they spend tokens."""
+    _check_scope(stall, market, key)
     raw = await request.body()
     if len(raw) > 400_000:
         raise HTTPException(413, "Request too large")
