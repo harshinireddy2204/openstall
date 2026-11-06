@@ -35,9 +35,11 @@
   <h2>Stalls ({{ m.stall_count }})</h2>
   <ul class="stall-list" data-market="{{ m.market_id }}" data-key="{{ key }}">
     {% for s in m.stalls %}<li><a href="/s/{{ s.stall_id }}">{{ s.name }}</a> <span class="muted">{{ s.city }}</span>
-      <button class="btn small" data-stall="{{ s.stall_id }}" data-action="remove">Remove</button></li>{% endfor %}
+      {% if not locked %}<button class="btn small" data-stall="{{ s.stall_id }}" data-action="remove">Remove</button>{% endif %}</li>{% endfor %}
   </ul>
-  {% if others %}
+  {% if locked %}
+  <p class="muted">This demo market is shared by everyone trying OpenStall, so its stalls stay fixed and you will see other people's test orders. <a href="/markets/new">Create your own market</a> to add or remove stalls.</p>
+  {% elif others %}
   <form class="row add-stall">
     <select name="stall_id">{% for s in others %}<option value="{{ s.id }}">{{ s.name }} ({{ s.city }})</option>{% endfor %}</select>
     <button class="btn small">Add stall</button>

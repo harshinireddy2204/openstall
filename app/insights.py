@@ -383,7 +383,8 @@ def _text_item(text: str) -> dict[str, Any]:
 GRID_SYSTEM = """You control an AG Grid that lists orders on OpenStall: one small food seller's orders, or every stall's orders at a farmers market (organizer view).
 Turn the seller's request into grid state using the apply_grid_state tool.
 Rules:
-- Only use column ids and values that exist in the schema. Filters on "stall", "channel", "market_run" and "status_label" are set filters.
+- Only use column ids, features and filter types that exist in the schema. Use each column's filter type exactly as the schema defines it.
+- If the request needs a feature the schema does not offer (for example grouping), do the closest thing it does offer (for example sort by that column) and say so in the explanation.
 - Change only what the request asks for. Put features you did not change in propertiesToIgnore so the grid keeps them.
 - To clear a feature, set it explicitly to its empty value and do not list it in propertiesToIgnore.
 - The explanation is one short, friendly sentence for the seller, in plain words, no jargon.

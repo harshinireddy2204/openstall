@@ -11,6 +11,7 @@
     {% for s in siblings %}<a href="/s/{{ s.id }}/dashboard?key={{ key|urlencode }}">{{ s.name }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
     <br>Market run orders are split by seller: each stall sees and fulfils only its own part, and refunds only its own part.</p>
   {% endif %}
+  {% if shared_demo %}<p class="note">This is a shared demo stall. Other people trying OpenStall order here too, so you will see their test orders alongside yours. Everything uses the PayPal sandbox.</p>{% endif %}
   <p><a class="btn primary" href="/s/{{ stall.id }}/insights?key={{ key|urlencode }}">Open Insights</a>
      <span class="muted">Sales, AI agent share, demand you missed, and an assistant that can answer questions about your shop.</span></p>
 </section>

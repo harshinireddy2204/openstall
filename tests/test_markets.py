@@ -71,3 +71,35 @@ def test_organizer_sees_orders_but_cannot_refund(client):
         c.execute("UPDATE stalls SET owner_key='seller-only' WHERE id=?", (NOOR,))
         c.execute("UPDATE markets SET organizer_key='organizer-only' WHERE id=?", (MID,))
     assert client.get(f"/s/{NOOR}/dashboard?key=organizer-only").status_code == 403
+
+
+def test_shared_demo_market_stalls_stay_fixed(client):
+    for action in ("remove", "add"):
+        r = client.post(f"/api/markets/{MID}/stalls", json={"key": okey(), "stall_id": TAMALES, "action": action})
+        assert r.status_code == 422 and r.json()["error"] == "demo_market_locked"
+    assert client.get(f"/api/markets/{MID}").json()["stall_count"] == 3
+    page = client.get(f"/m/{MID}/organizer?key={okey()}").text
+    assert 'data-action="remove"' not in page and "stay fixed" in page
+
+
+def test_demo_capacity_floor_raises_low_limits_only(monkeypatch):
+    from app import main
+    rows = db.query("SELECT id, daily_capacity FROM items WHERE stall_id=? AND daily_capacity IS NOT NULL", (NOOR,))
+    before = {r["id"]: r["daily_capacity"] for r in rows}
+    high = max(before, key=before.get)
+    with db.tx() as c:
+        c.execute("UPDATE items SET daily_capacity=500 WHERE id=?", (high,))
+    monkeypatch.setenv("DEMO_CAPACITY_FLOOR", "150")
+    try:
+        main.apply_demo_capacity()
+        after = {r["id"]: r["daily_capacity"] for r in db.query("SELECT id, daily_capacity FROM items WHERE stall_id=?", (NOOR,)) if r["id"] in before}
+        assert after[high] == 500 and all(v == 150 for k, v in after.items() if k != high)
+    finally:
+        with db.tx() as c:
+            for k, v in before.items():
+                c.execute("UPDATE items SET daily_capacity=? WHERE id=?", (v, k))
+
+
+def test_demo_dashboard_says_it_is_shared(client):
+    key = db.query_one("SELECT owner_key FROM stalls WHERE id=?", (NOOR,))["owner_key"]
+    assert "shared demo stall" in client.get(f"/s/{NOOR}/dashboard?key={key}").text

@@ -60,7 +60,7 @@ The model proposes, deterministic code decides, PayPal settles.
 - **Abuse limits.** Per-IP rate limits, a cap on unpaid holds per stall per day, holds that expire, order total caps.
 - **Prompt-injection aware.** Seller-written text is marked as untrusted data in both the MCP instructions and the buyer agent prompt, and the server enforces every rule regardless of what an agent says.
 
-118 tests (`tests/`) cover overselling, concurrent orders, lead time, price tampering, timeouts, declines, pending captures, refunds failing, webhook replays, partial refunds, disputes, XSS, rate limits and more.
+121 tests (`tests/`) cover overselling, concurrent orders, lead time, price tampering, timeouts, declines, pending captures, refunds failing, webhook replays, partial refunds, disputes, XSS, rate limits and more.
 
 ## Run locally
 

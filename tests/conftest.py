@@ -10,7 +10,7 @@ _TMP = Path(tempfile.mkdtemp()) / "test.db"
 os.environ["DATABASE_PATH"] = str(_TMP)
 # Blank anything a developer's .env might set, so tests behave the same on every machine.
 for var in ("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "ANTHROPIC_API_KEY", "DEMO_SELLER_PAYPAL_EMAIL",
-            "DEMO_OWNER_KEY", "AG_STUDIO_LICENSE_KEY", "MARKET_CHECKOUT", "RAILWAY_PUBLIC_DOMAIN", "RENDER_EXTERNAL_URL"):
+            "DEMO_OWNER_KEY", "AG_STUDIO_LICENSE_KEY", "AG_GRID_LICENSE_KEY", "DEMO_CAPACITY_FLOOR", "MARKET_CHECKOUT", "RAILWAY_PUBLIC_DOMAIN", "RENDER_EXTERNAL_URL"):
     os.environ[var] = ""
 os.environ["BASE_URL"] = "http://testserver"
 

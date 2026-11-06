@@ -43,6 +43,9 @@ class Settings:
 
     # AG Studio (seller Insights). Optional: without it the dashboard shows a trial watermark.
     ag_studio_license_key: str = field(default_factory=lambda: _env("AG_STUDIO_LICENSE_KEY"))
+    # AG Grid Enterprise (orders grids). An AG Studio key does not cover a standalone grid, so this is separate.
+    # Without it the orders grids run on AG Grid Community (no watermark, no grouping or side bar).
+    ag_grid_license_key: str = field(default_factory=lambda: _env("AG_GRID_LICENSE_KEY"))
 
     # Storage
     database_path: str = field(default_factory=lambda: _env("DATABASE_PATH", str(ROOT / "openstall.db")))

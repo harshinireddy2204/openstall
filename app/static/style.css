@@ -183,3 +183,4 @@ label.check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
 @media (max-width: 760px) { .mh-hero { grid-template-columns: 1fr; } }
 .os-stall { font-size: .75rem; font-weight: 600; color: #1d4ed8; background: #e8f0fe; padding: 1px 7px; border-radius: 99px; margin-right: 4px; }
 .stall-card .tag { align-self: flex-start; }
+.note { background: #fdf6ee; border: 1px solid #f1dcc4; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #5b4a3a; }

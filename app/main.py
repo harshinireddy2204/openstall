@@ -48,9 +48,28 @@ def apply_demo_payees() -> None:
                 c.execute("UPDATE stalls SET paypal_email=? WHERE id=?", (email.strip(), sid.strip()))
 
 
+def demo_stall_ids() -> set[str]:
+    """The seeded demo stalls (shared by everyone trying OpenStall)."""
+    names = [s["name"] for s in json.loads((ROOT / "seed" / "demo_stalls.json").read_text())]
+    return {r["id"] for n in names if (r := query_one("SELECT id FROM stalls WHERE name=?", (n,)))}
+
+
+def apply_demo_capacity() -> None:
+    """Many people order from the shared demo stalls, so each item makes at least DEMO_CAPACITY_FLOOR per day.
+    Higher limits set on purpose (for example through the Insights assistant) are kept."""
+    floor = int(os.getenv("DEMO_CAPACITY_FLOOR", "150") or 0)
+    ids = demo_stall_ids()
+    if floor <= 0 or not ids:
+        return
+    with tx() as c:
+        c.execute(f"UPDATE items SET daily_capacity=? WHERE stall_id IN ({','.join('?' * len(ids))}) "
+                  "AND daily_capacity IS NOT NULL AND daily_capacity < ?", (floor, *ids, floor))
+
+
 def seed_demo_data() -> None:
     _seed_demo_data()
     apply_demo_payees()
+    apply_demo_capacity()
     seed_demo_market()
 
 
@@ -218,8 +237,9 @@ def dashboard(request: Request, stall_id: str, key: str = ""):
     return templates.TemplateResponse(
         request, "dashboard.html", {"stall": stall, "orders": orders, "invoices": invoices, "events": events, "key": key,
                                     "siblings": [{"id": s["id"], "name": s["name"]} for s in siblings],
+                                    "shared_demo": stall_id in demo_stall_ids(),
                                     "orders_config": {"stallId": stall_id, "key": key, "ships": bool(stall.get("ships")),
-                                                      "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live}}
+                                                      "licenseKey": settings.ag_grid_license_key, "aiLive": settings.ai_live}}
     )
 
 
@@ -271,8 +291,8 @@ def market_organizer(request: Request, market_id: str, key: str = ""):
     in_market = set(markets.stall_ids(market_id))
     others = [s for s in query("SELECT id, name, city FROM stalls ORDER BY created_at") if s["id"] not in in_market]
     return templates.TemplateResponse(request, "market_organizer.html", {
-        "m": m, "key": key, "others": others, "page_url": f"{settings.base_url}/m/{market_id}",
-        "orders_config": {"marketId": market_id, "key": key, "licenseKey": settings.ag_studio_license_key, "aiLive": settings.ai_live},
+        "m": m, "key": key, "others": others, "locked": market_id == DEMO_MARKET_ID, "page_url": f"{settings.base_url}/m/{market_id}",
+        "orders_config": {"marketId": market_id, "key": key, "licenseKey": settings.ag_grid_license_key, "aiLive": settings.ai_live},
     })
 
 
@@ -320,6 +340,9 @@ class MarketStallIn(BaseModel):
 @app.post("/api/markets/{market_id}/stalls")
 def api_market_stalls(market_id: str, body: MarketStallIn):
     markets.check_organizer(market_id, body.key)
+    if market_id == DEMO_MARKET_ID:
+        raise RuleViolation("demo_market_locked", "This demo market is shared by everyone trying OpenStall, so its stalls "
+                            "stay fixed. Create your own market at /markets/new to add or remove stalls.")
     (markets.add_stall if body.action == "add" else markets.remove_stall)(market_id, body.stall_id)
     return markets.get_market(market_id)
 
