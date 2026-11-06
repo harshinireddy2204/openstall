@@ -185,7 +185,9 @@ def test_grid_command_returns_validated_state(monkeypatch):
     fake = _FakeClient([reply])
     monkeypatch.setattr(anthropic, "Anthropic", lambda api_key: fake)
     monkeypatch.setattr(insights, "settings", SimpleNamespace(ai_live=True, anthropic_api_key="k", anthropic_model="m"))
-    out = insights.run_grid_command({"request": "only AI agent orders", "schema": {"type": "object"}, "state": {}})
+    out = insights.run_grid_command({"request": "only AI agent orders", "schema": {"type": "object"}, "state": {},
+                                     "pickup_dates": ["2026-11-14", "2026-11-21"]})
     assert out["propertiesToIgnore"] == ["sort"] and out["gridState"]["filter"]
     assert fake.calls[0]["tool_choice"]["name"] == "apply_grid_state"
+    assert "2026-11-14, 2026-11-21" in fake.calls[0]["messages"][0]["content"]  # weekday requests land on real order dates
     assert insights.run_grid_command({"request": "", "schema": {}})["error"] == "bad_request"

@@ -207,7 +207,8 @@ function boot(cfg) {
       });
       const res = await fetch(`/api/grid/command?${scope}&key=${enc(cfg.key)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request, state: api.getState(), schema, today: new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify({ request, state: api.getState(), schema, today: new Date().toISOString().slice(0, 10),
+          pickup_dates: [...new Set([...known.values()].map((r) => r.pickup_date))].sort() }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.message || data.error || 'The assistant could not change the grid.');

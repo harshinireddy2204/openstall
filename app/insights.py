@@ -415,7 +415,11 @@ def run_grid_command(body: dict[str, Any]) -> dict[str, Any]:
             "required": ["gridState", "propertiesToIgnore", "explanation"],
         },
     }
-    user = (f"Today is {str(body.get('today') or '')[:10]}.\nCurrent grid state:\n"
+    dates = [str(d)[:10] for d in (body.get("pickup_dates") or [])[:60] if isinstance(d, str)]
+    hint = (f"Pickup dates that have orders in the grid: {', '.join(dates)}. When the request names a weekday "
+            "without a date (for example 'Saturday'), pick the matching date from this list, not a date with no orders.\n"
+            if dates else "")
+    user = (f"Today is {str(body.get('today') or '')[:10]}.\n{hint}Current grid state:\n"
             f"{json.dumps(body.get('state') or {})[:20000]}\n\nSeller's request: {request}")
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     msg_args = {"model": settings.anthropic_model, "max_tokens": 2000, "system": GRID_SYSTEM,
